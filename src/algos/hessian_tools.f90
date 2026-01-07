@@ -91,13 +91,6 @@ contains  !> MODULE PROCEDURES START HERE
       end if
     end do
 
-    open (newunit=unit,file="frequencies")
-    write (unit,*) "Frequencies:"
-    do i = 1,size(freq)
-      write (unit,*) freq(i)
-    end do
-    close (unit)
-
     return
 
   end subroutine frequencies

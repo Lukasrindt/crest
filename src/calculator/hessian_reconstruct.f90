@@ -29,6 +29,7 @@ module hessian_reconstruct
     procedure :: dealloc => cashed_hessian_deallocate
     procedure :: update => update_cashed_hessian
     procedure :: construct_hessian
+    procedure :: construct_hessian_bfgs_stepsvar
 
   end type cashed_hessian
 
@@ -164,5 +165,71 @@ contains
     end select
 
   end subroutine update_hessian
+
+  subroutine construct_hessian_bfgs_stepsvar(self, stepno)
+    class(cashed_hessian),intent(inout) :: self
+    integer :: i,j,k,nat3
+    real(wp),allocatable :: tmp(:),tmp_coords(:,:),tmp_grads(:,:),hess(:),dx(:)
+    real(wp) :: gnorm
+    integer :: unit,iter,made_iters,no_iteration
+    integer, intent(in) :: stepno
+    integer :: start_iter
+
+    nat3 = 3*self%natm
+
+    allocate (tmp_coords(self%steps,nat3))
+    allocate (tmp_grads(self%steps,nat3))
+    allocate (tmp(self%steps))
+    allocate (hess(nat3*(nat3+1)/2))
+    allocate (dx(nat3))
+
+    tmp = self%order
+
+    tmp_coords = reshape(self%coords, [self%steps,nat3])
+    tmp_grads = reshape(self%gradient, [self%steps,nat3])
+
+    made_iters = self%steps
+
+    if (minval(tmp) == 0) then !> Implement keyword like exact HU that kills the process
+      made_iters = maxval(tmp) !> if made_iters<steps
+      write (stdout,*) "Requsted Number of reconstruction steps is",self%steps, &
+      & "but only",made_iters,"geometry optimization steps were made!"
+      write (stdout,*) "Hessian is reconstructed with",made_iters,"update steps only!"
+
+      do while (minval(tmp) == 0)
+        j = minloc(tmp,1)
+        tmp(j) = HUGE(tmp(j))
+      end do
+    end if
+
+    no_iteration = self%made_iters
+    
+    start_iter = no_iteration - stepno
+    if (start_iter<0) then
+      start_iter = 1
+    endif
+
+    do i = start_iter,made_iters
+      if (i == start_iter) then
+        do k = 1,start_iter
+          j = minloc(tmp,1)
+          tmp(j) = HUGE(tmp(j))
+        enddo
+      else
+        j = minloc(tmp,1) !> This only happens if made_iters>steps
+        if (j == 1) then  !> => Not affected if too many steps requested
+          dx = tmp_coords(j,:)-tmp_coords(self%steps,:)
+          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(self%steps,:),dx,hess)
+        else
+          dx = tmp_coords(j,:)-tmp_coords(j-1,:)
+          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(j-1,:),dx,hess)
+        end if
+        tmp(j) = HUGE(tmp(j))
+      end if
+    end do
+
+    call dhtosq(nat3,self%B,hess)
+
+  end subroutine construct_hessian_bfgs_stepsvar
 
 end module hessian_reconstruct

@@ -278,7 +278,7 @@ contains
   end subroutine calcthermo
 
   subroutine calc_thermo_from_hess(mol,hess,pr,nt,temps,ithr,&
-  & fscal,sthr,et,ht,gt,stot, etot)
+  & fscal,sthr,et,ht,gt,stot,n,o)
     type(coord),intent(inout) :: mol
     integer :: nat3
     integer :: io,iunit
@@ -289,12 +289,18 @@ contains
     real(wp),allocatable,intent(out) :: et(:),ht(:),gt(:),stot(:)
     real(wp),intent(inout) :: hess(:,:)
     real(wp),allocatable :: freq(:)
+
     real(wp), intent(in) :: etot
     real(wp) :: zpve
     integer :: nrt
     real(wp),allocatable :: int_temps(:)
     character(len=*),parameter :: outfmt = &
     &  '(10x,"::",1x,a,f24.12,1x,a,1x,"::")'
+
+    integer, intent(in) :: n,o
+    integer :: i,j,ich,unit,k
+    real(wp) :: identity(6), steps_incl(5)
+
 
     nat3 = 3*mol%nat
     allocate (freq(nat3))
@@ -311,8 +317,21 @@ contains
 
     call frequencies(mol%nat,mol%at,mol%xyz,nat3,hess,freq,io)
 
+    identity = [0.001_wp,0.01_wp,0.02_wp,0.1_wp,0.5_wp,1.0_wp]
+    steps_incl = [0.1_wp,0.5_wp,1.0_wp,2.0_wp,100.0_wp]
+
+    open (newunit=unit,file="frequencies",status="unknown",position="append", action="write")
+    write(unit,*) "Freqs"
+    write (unit,*) identity(n),steps_incl(o)
+    do i = 1,size(freq)
+      write (unit,*) freq(i)
+    end do
+    write(unit,*) "END"
+    close (unit)
+
     call calcthermo(mol%nat,mol%at,mol%xyz,freq,pr,ithr,fscal,sthr,nt,temps, &
         &      et,ht,gt,stot)
+
 
     zpve = et(nrt)-ht(nrt)
     write (stdout,*)
@@ -326,6 +345,9 @@ contains
     write (stdout,outfmt) 'G(RRHO) w/o ZPVE ',gt(nrt)-zpve,'Eh'
     write (stdout,outfmt) 'G(RRHO) total    ',gt(nrt),'Eh'
     write (stdout,'(10x,a)') repeat(':',50)
+
+    !call print_hessian(hess(:,:),nat3,'','numhess')
+
 
   end subroutine calc_thermo_from_hess
 

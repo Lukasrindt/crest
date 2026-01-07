@@ -63,8 +63,10 @@ contains  !> MODULE PROCEDURES START HERE
     real(wp),intent(inout)    :: etot
     real(wp),intent(inout)    :: grd(3,mol%nat)
     real(wp),allocatable :: H_init(:,:),freq(:)
-    integer :: nat3,io,idx
-    real(wp),allocatable :: hess(:)
+    integer :: nat3
+    integer :: io
+    integer :: i,j, stepno, step
+    real(wp) :: identity(6), steps_incl(5)
 
 
     iostatus = -1
@@ -117,7 +119,13 @@ contains  !> MODULE PROCEDURES START HERE
     end select
     molnew%energy = etot
 
-    if (calc%do_HR .and. iostatus .eq. 0) then !> Hessian reconstruction and post-processing happen here, only do it if geometry relaxation successful
+
+    if (calc%do_HR .and. iostatus .eq. 0) then !> Hessian construction and post-processing happen here, only do it if geometry relaxation successful
+    identity = [0.001_wp,0.01_wp,0.02_wp,0.1_wp,0.5_wp,1.0_wp]
+    steps_incl = [0.1_wp,0.5_wp,1.0_wp,2.0_wp,100.0_wp]
+    do i = 1,6
+    do j = 1,5
+    if (calc%do_HR) then !> Hessian construction and post-processing happen here
       if (calc%full_HR) then
 
         write (stdout,*)
@@ -126,7 +134,7 @@ contains  !> MODULE PROCEDURES START HERE
 
         call calc_thermo_from_hess(molnew,calc%chess%H,pr, &
         & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
-        & calc%ht,calc%gt,calc%stot,etot)
+        & calc%ht,calc%gt,calc%stot,etot,i,j)
 
       else
         
@@ -150,12 +158,16 @@ contains  !> MODULE PROCEDURES START HERE
 
         call calc_thermo_from_hess(molnew,calc%chess%H(:,:),pr, &
         & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
-        & calc%ht,calc%gt,calc%stot,etot)
+        & calc%ht,calc%gt,calc%stot,i,j)
       end if
 
-      call calc%chess%dealloc()
-      deallocate (calc%chess)
     end if
+    enddo
+    enddo
+    endif
+
+    call calc%chess%dealloc()
+      deallocate (calc%chess)
 
     return
   end subroutine optimize_geometry
