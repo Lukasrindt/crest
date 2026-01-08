@@ -188,6 +188,12 @@ contains  !> MODULE PROCEDURES START HERE
     allocate(IPIV(nat3))
     !$omp end critical
 
+!> Hessian Reconstruct settings
+
+    if (calc%do_HR) then
+        calc%chess%made_iters = iter
+    endif
+
 !>------------------------------------------------------------------------
 !>--- put the Hessian guess into the type
 !>------------------------------------------------------------------------

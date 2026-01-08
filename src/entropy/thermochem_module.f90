@@ -278,7 +278,7 @@ contains
   end subroutine calcthermo
 
   subroutine calc_thermo_from_hess(mol,hess,pr,nt,temps,ithr,&
-  & fscal,sthr,et,ht,gt,stot,n,o)
+  & fscal,sthr,et,ht,gt,stot,n,o, etot)
     type(coord),intent(inout) :: mol
     integer :: nat3
     integer :: io,iunit
@@ -300,6 +300,13 @@ contains
     integer, intent(in) :: n,o
     integer :: i,j,ich,unit,k
     real(wp) :: identity(6), steps_incl(5)
+    real(wp), intent(in) :: etot
+    real(wp) :: zpve
+    integer :: nrt
+    real(wp),allocatable :: int_temps(:)
+    character(len=*),parameter :: outfmt = &
+    &  '(10x,"::",1x,a,f24.12,1x,a,1x,"::")'
+
 
 
     nat3 = 3*mol%nat
@@ -328,6 +335,9 @@ contains
     end do
     write(unit,*) "END"
     close (unit)
+
+    
+    
 
     call calcthermo(mol%nat,mol%at,mol%xyz,freq,pr,ithr,fscal,sthr,nt,temps, &
         &      et,ht,gt,stot)

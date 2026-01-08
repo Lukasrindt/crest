@@ -300,7 +300,6 @@ contains  !> MODULE PROCEDURES START HERE
 !**********************************************
 !>--- Hessian Reconstruct
 !**********************************************
-
     if (calc%do_HR .and. allocated(calc%chess)) then
       call calc%chess%update(gradient,energy,mol%xyz)
     end if

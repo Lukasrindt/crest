@@ -158,7 +158,7 @@ contains  !> MODULE PROCEDURES START HERE
 
         call calc_thermo_from_hess(molnew,calc%chess%H(:,:),pr, &
         & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
-        & calc%ht,calc%gt,calc%stot,i,j)
+        & calc%ht,calc%gt,calc%stot,i,j,etot)
       end if
 
     end if
