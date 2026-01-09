@@ -93,9 +93,10 @@ contains  !> MODULE PROCEDURES START HERE
     end if
 
     !> initial singlepoint
-    if (calc%do_HR) calc%chess%track_step = .false. !this is not tracked to avoid duplicate
+    if (calc%do_HR) calc%chess%track_step = .false. !initial calc should not be tracked to avoid duplicate
     call engrad(molnew,calc,etot,grd,iostatus)
     if (calc%do_HR) calc%chess%track_step = .true.
+
     !> optimization
     select case (calc%opt_engine)
     case (0)

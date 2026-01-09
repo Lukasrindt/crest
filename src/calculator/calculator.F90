@@ -300,7 +300,7 @@ contains  !> MODULE PROCEDURES START HERE
 !**********************************************
 !>--- Hessian Reconstruct
 !**********************************************
-    if (calc%do_HR .and. allocated(calc%chess)) then
+    if (calc%do_HR .and. allocated(calc%chess) .and. calc%chess%track_step) then
       call calc%chess%update(gradient,energy,mol%xyz)
     end if
 

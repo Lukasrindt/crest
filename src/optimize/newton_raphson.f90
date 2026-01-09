@@ -341,6 +341,10 @@ contains  !> MODULE PROCEDURES START HERE
         end select
       end if
 
+      if (calc%do_HR) then
+        calc%chess%made_iters = iter
+      endif
+
       !allocate(calc%chess%H(nat3,nat3))
       if (calc%full_HR) then
         call dhtosq(nat3,calc%chess%H(:,:),OPT%hess(:))
