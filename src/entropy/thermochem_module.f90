@@ -290,13 +290,6 @@ contains
     real(wp),intent(inout) :: hess(:,:)
     real(wp),allocatable :: freq(:)
 
-    real(wp), intent(in) :: etot
-    real(wp) :: zpve
-    integer :: nrt
-    real(wp),allocatable :: int_temps(:)
-    character(len=*),parameter :: outfmt = &
-    &  '(10x,"::",1x,a,f24.12,1x,a,1x,"::")'
-
     integer, intent(in) :: n,o
     integer :: i,j,ich,unit,k
     real(wp) :: identity(6), steps_incl(5)

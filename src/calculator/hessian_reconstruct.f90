@@ -190,6 +190,8 @@ contains
 
     made_iters = self%steps
 
+    call dsqtoh(nat3,self%hguess_mat,hess)
+
     if (minval(tmp) == 0) then !> Implement keyword like exact HU that kills the process
       made_iters = maxval(tmp) !> if made_iters<steps
       write (stdout,*) "Requsted Number of reconstruction steps is",self%steps, &
