@@ -123,6 +123,7 @@ contains  !> MODULE PROCEDURES START HERE
 
     if (calc%do_HR .and. iostatus .eq. 0) then !> Hessian construction and post-processing happen here, only do it if geometry relaxation successful
     identity = [0.001_wp,0.01_wp,0.02_wp,0.1_wp,0.5_wp,1.0_wp]
+    !identity = [0.02_wp,0.04_wp,0.06_wp,0.08_wp,0.10_wp,0.12_wp,0.14_wp,0.16_wp,0.18_wp,0.20_wp]
     steps_incl = [0.1_wp,0.5_wp,1.0_wp,2.0_wp,100.0_wp]
     do i = 1,6
     do j = 1,5
