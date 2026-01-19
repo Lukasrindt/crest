@@ -64,7 +64,7 @@ contains  !> MODULE PROCEDURES START HERE
     real(wp),intent(inout)    :: grd(3,mol%nat)
     real(wp),allocatable :: H_init(:,:),freq(:)
     integer :: nat3
-    integer :: io
+    integer :: io,idx
     integer :: i,j, stepno, step
     real(wp) :: identity(6), steps_incl(5)
 
@@ -150,7 +150,7 @@ contains  !> MODULE PROCEDURES START HERE
         write(stdout,*) 
         call calc_thermo_from_hess(molnew,H_init,pr, &
         & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
-        & calc%ht,calc%gt,calc%stot,etot)
+        & calc%ht,calc%gt,calc%stot,i,j,etot)
 
         call calc%chess%construct_hessian()
 

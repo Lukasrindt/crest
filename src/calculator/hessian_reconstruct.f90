@@ -22,6 +22,7 @@ module hessian_reconstruct
     logical :: track_step = .true.
     integer :: initialize_type != 0
     integer :: hu_type != 0
+    integer :: made_iters
 
   contains
 
@@ -52,7 +53,6 @@ contains
     allocate (self%order(steps))
     allocate (self%hess((3*N*(3*N+1))/2))
     allocate (self%H(3*N,3*N))
-
     self%order(:) = 0
 
   end subroutine cashed_hessian_allocate
@@ -190,8 +190,6 @@ contains
 
     made_iters = self%steps
 
-    call dsqtoh(nat3,self%hguess_mat,hess)
-
     if (minval(tmp) == 0) then !> Implement keyword like exact HU that kills the process
       made_iters = maxval(tmp) !> if made_iters<steps
       write (stdout,*) "Requsted Number of reconstruction steps is",self%steps, &
@@ -221,16 +219,16 @@ contains
         j = minloc(tmp,1) !> This only happens if made_iters>steps
         if (j == 1) then  !> => Not affected if too many steps requested
           dx = tmp_coords(j,:)-tmp_coords(self%steps,:)
-          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(self%steps,:),dx,hess)
+          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(self%steps,:),dx,hess(:))
         else
           dx = tmp_coords(j,:)-tmp_coords(j-1,:)
-          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(j-1,:),dx,hess)
+          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(j-1,:),dx,hess(:))
         end if
         tmp(j) = HUGE(tmp(j))
       end if
     end do
 
-    call dhtosq(nat3,self%B,hess)
+    call dhtosq(nat3,self%H(:,:),hess(:))
 
   end subroutine construct_hessian_bfgs_stepsvar
 
