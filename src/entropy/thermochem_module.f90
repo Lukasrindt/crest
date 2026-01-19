@@ -317,12 +317,12 @@ contains
 
     call frequencies(mol%nat,mol%at,mol%xyz,nat3,hess,freq,io)
 
-    identity = [0.001_wp,0.01_wp,0.02_wp,0.1_wp,0.5_wp,1.0_wp]
+    !identity = [0.001_wp,0.01_wp,0.02_wp,0.1_wp,0.5_wp,1.0_wp]
     steps_incl = [0.1_wp,0.5_wp,1.0_wp,2.0_wp,100.0_wp]
 
     open (newunit=unit,file="frequencies",status="unknown",position="append", action="write")
     write(unit,*) "Freqs"
-    write (unit,*) identity(n),steps_incl(o)
+    write (unit,*) n,steps_incl(o)
     do i = 1,size(freq)
       write (unit,*) freq(i)
     end do

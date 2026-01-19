@@ -219,16 +219,16 @@ contains
         j = minloc(tmp,1) !> This only happens if made_iters>steps
         if (j == 1) then  !> => Not affected if too many steps requested
           dx = tmp_coords(j,:)-tmp_coords(self%steps,:)
-          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(self%steps,:),dx,hess(:))
+          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(self%steps,:),dx,self%hess(:))
         else
           dx = tmp_coords(j,:)-tmp_coords(j-1,:)
-          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(j-1,:),dx,hess(:))
+          call bfgs(nat3,gnorm,tmp_grads(j,:),tmp_grads(j-1,:),dx,self%hess(:))
         end if
         tmp(j) = HUGE(tmp(j))
       end if
     end do
 
-    call dhtosq(nat3,self%H(:,:),hess(:))
+    call dhtosq(nat3,self%H(:,:),self%hess(:))
 
   end subroutine construct_hessian_bfgs_stepsvar
 
