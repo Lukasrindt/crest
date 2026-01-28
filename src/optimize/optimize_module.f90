@@ -124,36 +124,36 @@ contains  !> MODULE PROCEDURES START HERE
     if (calc%do_HR .and. iostatus .eq. 0) then !> Hessian construction and post-processing happen here, only do it if geometry relaxation successful
     !identity = [0.001_wp,0.01_wp,0.02_wp,0.1_wp,0.5_wp,1.0_wp]
     !identity = [0.02_wp,0.04_wp,0.06_wp,0.08_wp,0.10_wp,0.12_wp,0.14_wp,0.16_wp,0.18_wp,0.20_wp]
-    steps_incl = [0.1_wp,0.5_wp,1.0_wp,2.0_wp,100.0_wp]
-    do i = 1,5 !> loop for hessian init
-    if (i .ne. 4 .and. i .ne. 2 .and. i .ne. 3) then !> dont do gfn0 1 or 2 guesses duh
-    do j = 1,5
-    if (calc%do_HR) then !> Hessian construction and post-processing happen here
+      steps_incl = [0.1_wp,0.5_wp,1.0_wp,2.0_wp,100.0_wp]
+      do i = 1,5 !> loop for hessian init
+        if (i .ne. 4 .and. i .ne. 2 .and. i .ne. 3) then !> dont do gfn0 1 or 2 guesses duh
+          do j = 1,5 !Loop for steps taken
+            if (calc%do_HR) then !> Hessian construction and post-processing happen here
 
-        write (stdout,*)
-        write (stdout,*) "THERMO FROM RECONSTRUCTED HESSIAN with", i,steps_incl(j) 
-        write (stdout,*)
-      
-        step = nint(steps_incl(j)*molnew%nat)
-        stepno = max(5,step)
-        idx = calc%chess%made_iters - stepno
-        if (idx<0) then
-        idx = 1
+                write (stdout,*)
+                write (stdout,*) "THERMO FROM RECONSTRUCTED HESSIAN with", i,steps_incl(j) 
+                write (stdout,*)
+              
+                step = nint(steps_incl(j)*molnew%nat)
+                stepno = max(5,step)
+                idx = calc%chess%made_iters - stepno
+                if (idx<0) then
+                idx = 1
+                endif
+                call initialize_hessian(calc,i,calc%chess%coords(idx,:,:),molnew%nat,molnew%at,calc%chess%hess(:),calc%chess%hguess,pr)  !> This hguess is set through the hguess variable of the optimizer and needs to be hardcoded/set explicitly before initialization for benchmarking!!
+                !call dhtosq(nat3,H_init,calc%chess%hess) !> maybe this should all be inside the construct bfgs function later? -> cannot due to circular import!!!
+                !write(stdout,*)                                                                                                   !> Hessian type (gfnff,mod,identity) is set through input file and is already encoded into the calc object
+
+                call calc%chess%construct_hessian_bfgs_stepsvar(stepno)
+
+                call calc_thermo_from_hess(molnew,calc%chess%H(:,:),pr, &
+                & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
+                & calc%ht,calc%gt,calc%stot,i,j,etot)
+            
+            end if
+          enddo
         endif
-        call initialize_hessian(calc,i,calc%chess%coords(idx,:,:),molnew%nat,molnew%at,calc%chess%hess(:),calc%chess%hguess,pr)  !> This hguess is set through the hguess variable of the optimizer and needs to be hardcoded/set explicitly before initialization for benchmarking!!
-        !call dhtosq(nat3,H_init,calc%chess%hess) !> maybe this should all be inside the construct bfgs function later? -> cannot due to circular import!!!
-        !write(stdout,*)                                                                                                   !> Hessian type (gfnff,mod,identity) is set through input file and is already encoded into the calc object
-
-        call calc%chess%construct_hessian_bfgs_stepsvar(stepno)
-
-        call calc_thermo_from_hess(molnew,calc%chess%H(:,:),pr, &
-        & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
-        & calc%ht,calc%gt,calc%stot,i,j,etot)
-    
-    end if
-    enddo
-    endif
-    enddo
+      enddo
     endif
 
     if (allocated(calc%chess)) then
