@@ -62,7 +62,7 @@ contains  !> MODULE PROCEDURES START HERE
     integer,intent(out)       :: iostatus
     real(wp),intent(inout)    :: etot
     real(wp),intent(inout)    :: grd(3,mol%nat)
-    real(wp),allocatable :: H_init(:,:),freq(:)
+    real(wp),allocatable :: H_init(:,:),hess(:)
     integer :: nat3
     integer :: io,idx
     integer :: i,j, stepno, step
@@ -120,13 +120,26 @@ contains  !> MODULE PROCEDURES START HERE
     end select
     molnew%energy = etot
 
-
+    
     if (calc%do_HR .and. iostatus .eq. 0) then !> Hessian construction and post-processing happen here, only do it if geometry relaxation successful
     !identity = [0.001_wp,0.01_wp,0.02_wp,0.1_wp,0.5_wp,1.0_wp]
     !identity = [0.02_wp,0.04_wp,0.06_wp,0.08_wp,0.10_wp,0.12_wp,0.14_wp,0.16_wp,0.18_wp,0.20_wp]
       steps_incl = [0.1_wp,0.5_wp,1.0_wp,2.0_wp,100.0_wp]
       do i = 1,5 !> loop for hessian init
         if (i .ne. 4 .and. i .ne. 2 .and. i .ne. 3) then !> dont do gfn0 1 or 2 guesses duh
+
+              write(stdout,*) 
+              write(stdout,*) 'Thermo from initialized Hessian!'
+              write(stdout,*)
+              
+              call initialize_hessian(calc,i,molnew%xyz(:,:),molnew%nat,molnew%at(:),hess(:),calc%chess%hguess,pr) !Building the initial hessian type at minimum, level shifted
+
+              call dhtosq(nat3,H_init(:,:), hess(:))
+    
+              call calc_thermo_from_hess(molnew,H_init(:,:),pr, &
+                & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
+                & calc%ht,calc%gt,calc%stot,i,j,etot)
+
           do j = 1,5 !Loop for steps taken
             if (calc%do_HR) then !> Hessian construction and post-processing happen here
 
@@ -154,6 +167,7 @@ contains  !> MODULE PROCEDURES START HERE
           enddo
         endif
       enddo
+    
     endif
 
     if (allocated(calc%chess)) then
