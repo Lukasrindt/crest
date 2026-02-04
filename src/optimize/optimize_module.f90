@@ -128,15 +128,15 @@ contains  !> MODULE PROCEDURES START HERE
       do i = 1,5 !> loop for hessian init
         if (i .ne. 4 .and. i .ne. 2 .and. i .ne. 3) then !> dont do gfn0 1 or 2 guesses duh
 
+              j = 1
               write(stdout,*) 
               write(stdout,*) 'Thermo from initialized Hessian!'
               write(stdout,*)
               
-              call initialize_hessian(calc,i,molnew%xyz(:,:),molnew%nat,molnew%at(:),hess(:),calc%chess%hguess,pr) !Building the initial hessian type at minimum, level shifted
-
-              call dhtosq(nat3,H_init(:,:), hess(:))
+              call initialize_hessian(calc,i,molnew%xyz,molnew%nat,molnew%at,hess,calc%chess%hguess,pr) !Building the initial hessian type at minimum, level shifted
+              call dhtosq(nat3,H_init, hess)
     
-              call calc_thermo_from_hess(molnew,H_init(:,:),pr, &
+              call calc_thermo_from_hess(molnew,H_init,pr, &
                 & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
                 & calc%ht,calc%gt,calc%stot,i,j,etot)
 
@@ -149,17 +149,13 @@ contains  !> MODULE PROCEDURES START HERE
               
                 step = nint(steps_incl(j)*molnew%nat)
                 stepno = max(5,step)
-                idx = calc%chess%made_iters - stepno
-                if (idx<0) then
-                idx = 1
-                endif
-                call initialize_hessian(calc,i,calc%chess%coords(idx,:,:),molnew%nat,molnew%at,calc%chess%hess(:),calc%chess%hguess,pr)  !> This hguess is set through the hguess variable of the optimizer and needs to be hardcoded/set explicitly before initialization for benchmarking!!
-                !call dhtosq(nat3,H_init,calc%chess%hess) !> maybe this should all be inside the construct bfgs function later? -> cannot due to circular import!!!
-                !write(stdout,*)                                                                                                   !> Hessian type (gfnff,mod,identity) is set through input file and is already encoded into the calc object
+                idx = max((calc%chess%made_iters - stepno),1)
+                call initialize_hessian(calc,i,calc%chess%coords(idx,1:3,1:molnew%nat),molnew%nat,molnew%at,calc%chess%hess,calc%chess%hguess,pr)  !> This hguess is set through the hguess variable of the optimizer and needs to be hardcoded/set explicitly before initialization for benchmarking!!
+                !call dhtosq(nat3,calc%chess%H,calc%chess%hess) !> maybe this should all be inside the construct bfgs function later? -> cannot due to circular import!!!
 
                 call calc%chess%construct_hessian_bfgs_stepsvar(stepno)
 
-                call calc_thermo_from_hess(molnew,calc%chess%H(:,:),pr, &
+                call calc_thermo_from_hess(molnew,calc%chess%H,pr, &
                 & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
                 & calc%ht,calc%gt,calc%stot,i,j,etot)
             

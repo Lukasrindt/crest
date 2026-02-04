@@ -501,6 +501,10 @@ contains  !> MODULE PROCEDURES START HERE
         end select
       end if
 
+      if (calc%do_HR) then
+        calc%chess%made_iters = iter
+      end if
+
 !>------------------------------------------------------------------------
 !>  rational function (RF) method
 !>------------------------------------------------------------------------
