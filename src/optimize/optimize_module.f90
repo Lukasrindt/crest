@@ -120,6 +120,7 @@ contains  !> MODULE PROCEDURES START HERE
     end select
     molnew%energy = etot
 
+    allocate(hess(nat3*(nat3+1)/2))
     
     if (calc%do_HR .and. iostatus .eq. 0) then !> Hessian construction and post-processing happen here, only do it if geometry relaxation successful
     !identity = [0.001_wp,0.01_wp,0.02_wp,0.1_wp,0.5_wp,1.0_wp]

@@ -118,6 +118,13 @@ contains
     integer :: lwork,liwork,info,i,j,k,l
     real(wp) :: elow,damp
 
+    if (size(hess) /= nat3*(nat3+1)/2) then
+        write(*,*) "ERROR: force_positive_definiteness:"
+        write(*,*) "  size(hess) =", size(hess)
+        write(*,*) "  expected   =", nat3*(nat3+1)/2
+        stop
+    end if
+
     allocate (eigvec(nat3,nat3),eigval(nat3))
     lwork = 1+6*nat3+2*nat3*nat3
     liwork = 8*nat3
