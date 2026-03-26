@@ -63,7 +63,7 @@ subroutine deform_opt_hess(calc,mol)
         write(stdout,*) 
         call calc_thermo_from_hess(molnew,H_init,pr, &
         & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
-        & calc%ht,calc%gt,calc%stot,etot)
+        & calc%ht,calc%gt,calc%stot,etot, calc%emodel)
 
         call calc%chess%construct_hessian()
 
@@ -73,7 +73,7 @@ subroutine deform_opt_hess(calc,mol)
 
         call calc_thermo_from_hess(molnew,calc%chess%H(:,:),pr, &
         & calc%nt,calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
-        & calc%ht,calc%gt,calc%stot,etot)
+        & calc%ht,calc%gt,calc%stot,etot,calc%emodel)
 
     else 
         write(stdout,*) "Reoptimised Geometry not equal to initial structure"

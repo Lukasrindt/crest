@@ -31,6 +31,9 @@ subroutine crest_playground(env,tim)
   use crest_data
   use crest_calculator
   use strucrd
+  use hessian_reconstruct
+  use hr_utils
+  use thermochem_module
   implicit none
   type(systemdata),intent(inout) :: env
   type(timer),intent(inout)      :: tim
@@ -69,28 +72,55 @@ subroutine crest_playground(env,tim)
 !!========================================================================================!
 !
 !  allocate (grad(3,mol%nat),source=0.0_wp)
-!  call env2calc(env,calc,mol)
-!  calc%calcs(1)%rdwbo = .true.
-!  call calc%info(stdout)
+  call env2calc(env,calc,mol)
+  calc%calcs(1)%rdwbo = .true.
+  ! call calc%info(stdout)
 !
 !  call engrad(mol,calc,energy,grad,io)
 !  call calculation_summary(calc,mol,energy,grad)
 !========================================================================================!
 
-  allocate(mol%gradient(3,mol%nat), source=1.0_wp)
-  call mol%write('dummy.extxyz')
-
-
-  call molnew%open("dummy.extxyz")
-  call molnew%write("dummy2.extxyz")
-
+  ! allocate(mol%gradient(3,mol%nat), source=1.0_wp)
+  ! call mol%write('dummy.extxyz')
+  !
+  !
+  ! call molnew%open("dummy.extxyz")
+  ! call molnew%write("dummy2.extxyz")
+  
+  pr = .true.
 
   block
     type(coord),allocatable :: structures(:)
-    integer :: nall
-    call rdensemble(env%inputcoords,nall,structures)
-    write(*,*) nall,'structures read from ',env%inputcoords
-    call wrensemble('dummyensemble.xyz',nall,structures)
+    type(coord) :: init_mol
+    ! type(cashed_hessian) :: chess 
+    integer :: i, nall, steps
+    real(wp) :: etot
+     call rdensemble(env%inputcoords,nall,structures)
+    ! write(*,*) nall,'structures read from ',env%inputcoords
+    ! do i=1,5
+    ! write(*,*) structures(1)%xyz(:,i)
+    ! enddo
+    ! do i=1,5
+    ! write(*,*) structures(1)%gradient(:,i)
+    ! enddo
+    ! call wrensemble('dummyensemble.xyz',nall,structures)
+    allocate(calc%chess)
+    call calc%chess%alloc(structures(1)%nat,calc%hu_steps,calc%initialize_hr_type,calc%hr_hu_type)
+    
+    do i=1,nall
+      call calc%chess%update(structures(i)%gradient,structures(i)%xyz)
+    enddo
+
+    init_mol = structures(1)
+    call initialize_hessian(calc, calc%chess%initialize_type,calc%chess%coords(1,:,:), &
+      &init_mol%nat,init_mol%at,calc%chess%hess(:),calc%chess%hguess,pr)
+
+    call calc%chess%construct_hessian()
+   
+    write(stdout,*) calc%sthr, env%thermo%sthr
+    call calc_thermo_from_hess(structures(nall), calc%chess%H,pr, &
+    & calc%nt, calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
+    & calc%ht, calc%gt, calc%stot, etot, calc%emodel)
   end block
 !========================================================================================!
   call tim%stop(14)

@@ -34,14 +34,14 @@ module hessian_reconstruct
 
 contains
 
-  subroutine cashed_hessian_allocate(self,N,steps,hguess,initialize_type, hu_type) !> maybe make keywords optional later
+  subroutine cashed_hessian_allocate(self,N,steps,initialize_type, hu_type, hguess) !> maybe make keywords optional later
     integer,intent(in) :: N,steps, initialize_type, hu_type
     class(cashed_hessian),intent(inout) :: self
-    real(wp),intent(in) :: hguess
+    real(wp),intent(in), optional :: hguess
 
 
     self%steps = steps
-    self%hguess = hguess
+    if (present(hguess)) self%hguess = hguess
     self%natm = N
     self%initialize_type = initialize_type
     self%hu_type = hu_type
@@ -66,16 +66,17 @@ contains
 
   end subroutine cashed_hessian_deallocate
 
-  subroutine update_cashed_hessian(self,gradient,energy,coords)
+  subroutine update_cashed_hessian(self,gradient,coords, energy)
     class(cashed_hessian),intent(inout) :: self
-    real(wp),intent(in) :: gradient(:,:),energy,coords(:,:)
+    real(wp),intent(in) :: gradient(:,:),coords(:,:)
+    real(wp),intent(in),optional :: energy
     integer :: idx,i
 
     self%stepcount = self%stepcount+1
     idx = minloc(self%order,1)
     self%order(idx) = self%stepcount
     self%gradient(idx,:,:) = gradient
-    self%energy(idx) = energy
+    if (present(energy)) self%energy(idx) = energy
     self%coords(idx,:,:) = coords
 
   end subroutine update_cashed_hessian
@@ -132,7 +133,7 @@ contains
       end if
     end do
 
-    call dhtosq(nat3,self%H(:,:),self%hess(:)) !>B needs to be renamed eventually!
+    call dhtosq(nat3,self%H(:,:),self%hess(:))
 
   end subroutine construct_hessian
 
