@@ -1,5 +1,5 @@
 module hessian_reconstruct
-  use iso_fortran_env,only:wp => real64
+  ! use iso_fortran_env,only:wp => real64
   use hessupdate_module
   use optimize_maths
   use crest_parameters
@@ -78,7 +78,7 @@ contains
     self%gradient(idx,:,:) = gradient
     if (present(energy)) self%energy(idx) = energy
     self%coords(idx,:,:) = coords
-
+    write(*,*) self%coords(self%stepcount,1,1)
   end subroutine update_cashed_hessian
 
   subroutine construct_hessian(self)
@@ -94,7 +94,8 @@ contains
     allocate (tmp_grads(self%steps,nat3))
     allocate (tmp(self%steps))
     allocate (dx(nat3))
-
+    
+    write(*,*) "ORDER" , self%order
     tmp = self%order
 
     tmp_coords = reshape(self%coords, [self%steps,nat3])
@@ -131,6 +132,7 @@ contains
         end if
         tmp(j) = HUGE(tmp(j))
       end if
+      write(*,*) "HESS ELEMENT", self%hess(1)
     end do
 
     call dhtosq(nat3,self%H(:,:),self%hess(:))

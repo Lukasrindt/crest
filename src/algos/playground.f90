@@ -41,7 +41,7 @@ subroutine crest_playground(env,tim)
   integer :: i,j,k,l,io,ich
   logical :: pr,wr
 !========================================================================================!
-  type(calcdata) :: calc
+  ! type(calcdata) :: calc
   real(wp) :: accuracy,etemp
 
   integer :: V,maxgen
@@ -72,12 +72,12 @@ subroutine crest_playground(env,tim)
 !!========================================================================================!
 !
 !  allocate (grad(3,mol%nat),source=0.0_wp)
-  call env2calc(env,calc,mol)
-  calc%calcs(1)%rdwbo = .true.
-  ! call calc%info(stdout)
+  ! call env2env%calc(env,env%calc,mol)
+  ! env%calc%env%calcs(1)%rdwbo = .true.
+  ! call env%calc%info(stdout)
 !
-!  call engrad(mol,calc,energy,grad,io)
-!  call calculation_summary(calc,mol,energy,grad)
+!  call engrad(mol,env%calc,energy,grad,io)
+!  call env%calculation_summary(env%calc,mol,energy,grad)
 !========================================================================================!
 
   ! allocate(mol%gradient(3,mol%nat), source=1.0_wp)
@@ -104,23 +104,28 @@ subroutine crest_playground(env,tim)
     ! write(*,*) structures(1)%gradient(:,i)
     ! enddo
     ! call wrensemble('dummyensemble.xyz',nall,structures)
-    allocate(calc%chess)
-    call calc%chess%alloc(structures(1)%nat,calc%hu_steps,calc%initialize_hr_type,calc%hr_hu_type)
-    
+    allocate(env%calc%chess)
+    write(*,*) env%calc%hu_steps
+    call env%calc%chess%alloc(structures(1)%nat,env%calc%hu_steps,env%calc%initialize_hr_type,env%calc%hr_hu_type,hguess=env%calc%chess_id_guess)
     do i=1,nall
-      call calc%chess%update(structures(i)%gradient,structures(i)%xyz)
+      call env%calc%chess%update(structures(i)%gradient,structures(i)%xyz)
     enddo
 
-    init_mol = structures(1)
-    call initialize_hessian(calc, calc%chess%initialize_type,calc%chess%coords(1,:,:), &
-      &init_mol%nat,init_mol%at,calc%chess%hess(:),calc%chess%hguess,pr)
+    write(*,*) nall
 
-    call calc%chess%construct_hessian()
-   
-    write(stdout,*) calc%sthr, env%thermo%sthr
-    call calc_thermo_from_hess(structures(nall), calc%chess%H,pr, &
-    & calc%nt, calc%temperatures,calc%ithr,calc%fscal,calc%sthr,calc%et, &
-    & calc%ht, calc%gt, calc%stot, etot, calc%emodel)
+    init_mol = structures(nall)
+    write(*,*) env%calc%chess%hguess
+    call initialize_hessian(env%calc, env%calc%chess%initialize_type,env%calc%chess%coords(nall,:,:), &
+      &init_mol%nat,init_mol%at,env%calc%chess%hess(:),env%calc%chess%hguess,pr)
+
+    call env%calc%chess%construct_hessian()
+
+    etot=structures(nall)%energy
+
+    write(stdout,*) env%calc%sthr, env%thermo%sthr
+    call calc_thermo_from_hess(structures(nall), env%calc%chess%H,pr, &
+    & env%calc%nt, env%calc%temperatures,env%calc%ithr,env%calc%fscal,env%calc%sthr,env%calc%et, &
+    & env%calc%ht, env%calc%gt, env%calc%stot, etot, env%calc%emodel)
   end block
 !========================================================================================!
   call tim%stop(14)
