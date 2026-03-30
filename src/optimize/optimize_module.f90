@@ -160,9 +160,11 @@ contains  !> MODULE PROCEDURES START HERE
          deallocate (calc%chess)
       end if
 
+      write(*,*) etot
+
       !write(stdout,*) calc%g_sampling
       if (calc%g_sampling) then
-         pr2 = .true.
+         pr2 = .false.
          !write(stdout,*) "Running gs"
          !write(stdout,*) "Energy pre correction", etot
          !$omp critical

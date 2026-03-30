@@ -1048,7 +1048,7 @@ contains  !> MODULE PROCEDURES START HERE
     ! Extract Energy
     call get_key_value(comment_line,"energy",val_str,found,case_sensitive=.false.)
     if (found) read (val_str,*) energy
-    energy = energy / autoeV
+    energy = energy
 
     ! Extract Lattice
     call get_key_value(comment_line,"lattice",val_str,found,case_sensitive=.false.)

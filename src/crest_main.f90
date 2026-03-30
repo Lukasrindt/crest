@@ -313,6 +313,9 @@ program CREST
     case (crest_bh) !> Standard basin-hopping
       call crest_basinhopping(env,tim)
 
+    case (crest_hess_from_trj)
+      call hess_from_trj(env,tim)
+
     case (crest_test)
       call crest_playground(env,tim)
 

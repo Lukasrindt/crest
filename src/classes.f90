@@ -77,6 +77,7 @@ module crest_data
   integer,parameter,public :: crest_deprotonate = 17
   integer,parameter,public :: crest_tautomerize = 18
   integer,parameter,public :: crest_sorting = 19
+  integer,parameter,public :: crest_hess_from_trj = 202
 !>> runtypes with IDs between use non-legacy routines  <<!
   integer,parameter,public :: crest_sp         = 264
   integer,parameter,public :: crest_optimize   = 265

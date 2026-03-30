@@ -78,7 +78,6 @@ contains
     self%gradient(idx,:,:) = gradient
     if (present(energy)) self%energy(idx) = energy
     self%coords(idx,:,:) = coords
-    write(*,*) self%coords(self%stepcount,1,1)
   end subroutine update_cashed_hessian
 
   subroutine construct_hessian(self)
@@ -95,7 +94,6 @@ contains
     allocate (tmp(self%steps))
     allocate (dx(nat3))
     
-    write(*,*) "ORDER" , self%order
     tmp = self%order
 
     tmp_coords = reshape(self%coords, [self%steps,nat3])
@@ -132,7 +130,6 @@ contains
         end if
         tmp(j) = HUGE(tmp(j))
       end if
-      write(*,*) "HESS ELEMENT", self%hess(1)
     end do
 
     call dhtosq(nat3,self%H(:,:),self%hess(:))

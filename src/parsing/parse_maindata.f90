@@ -175,6 +175,9 @@ contains   !> MODULE PROCEDURES START HERE
       case ('scan')
         env%preopt = .false.
         env%crestver = crest_scanning
+      case ('hess_from_trj')
+        env%preopt = .false.
+        env%crestver = crest_hess_from_trj
       case ('search_1')
         env%preopt = .true.
         env%crestver = crest_s1
