@@ -582,6 +582,8 @@ contains !> MODULE PROCEDURES START HERE
     case ('chess_steps')
       calc%hu_steps = kv%value_i
 
+    case ('chess_space')
+      calc%chess_space = kv%value_i
 !>--- strings
     case ('id','type')
       !> (OLD setting) calculation type

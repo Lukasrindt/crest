@@ -497,6 +497,9 @@ contains  !> MODULE PROCEDURES STARTE HERE
           &      et, ht, gt, stot, emodel=emodel)
 
       zpve = et(nrt) - ht(nrt)
+
+      ! gt = gt + 0.005_wp
+
       if (pr) then
          write (stdout, *)
          write (stdout, '(10x,a)') repeat(':', 50)

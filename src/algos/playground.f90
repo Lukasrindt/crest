@@ -26,108 +26,98 @@
 !>  env  -  crest's systemdata object
 !>  tim  -  timer object
 !>-----------------------------------------------
-subroutine crest_playground(env,tim)
-  use crest_parameters
-  use crest_data
-  use crest_calculator
-  use strucrd
-  use hessian_reconstruct
-  use hr_utils
-  use thermochem_module
-  implicit none
-  type(systemdata),intent(inout) :: env
-  type(timer),intent(inout)      :: tim
-  type(coord) :: mol,molnew
-  integer :: i,j,k,l,io,ich
-  logical :: pr,wr
+subroutine crest_playground(env, tim)
+   use crest_parameters
+   use crest_data
+   use crest_calculator
+   use strucrd
+   use hessian_reconstruct
+   use hr_utils
+   use irmsd_module
+   implicit none
+   type(systemdata), intent(inout) :: env
+   type(timer), intent(inout)      :: tim
+   type(coord) :: mol, molnew
+   integer :: i, j, k, l, io, ich
+   logical :: pr, wr
 !========================================================================================!
-  ! type(calcdata) :: calc
-  real(wp) :: accuracy,etemp
+   ! type(calcdata) :: calc
+   real(wp) :: accuracy, etemp
 
-  integer :: V,maxgen
-  integer,allocatable :: A(:,:)
-  logical,allocatable :: rings(:,:)
-  integer,allocatable :: tmp(:)
-  logical :: connected,fail,doreturn
+   integer :: V, maxgen
+   integer, allocatable :: A(:, :)
+   logical, allocatable :: rings(:, :)
+   integer, allocatable :: tmp(:)
+   logical :: connected, fail, doreturn
 
-  real(wp) :: energy
-  real(wp),allocatable :: grad(:,:),geo(:,:),csv(:,:),q(:)
+   real(wp) :: energy
+   real(wp), allocatable :: grad(:, :), geo(:, :), csv(:, :), q(:)
 
 !========================================================================================!
-  call tim%start(14,'Test implementation')
+   call tim%start(14, 'Test implementation')
 !========================================================================================!
-  !call system('figlet welcome')
-  write (*,*) "              _                          "
-  write (*,*) "__      _____| | ___ ___  _ __ ___   ___ "
-  write (*,*) "\ \ /\ / / _ \ |/ __/ _ \| '_ ` _ \ / _ \"
-  write (*,*) " \ V  V /  __/ | (_| (_) | | | | | |  __/"
-  write (*,*) "  \_/\_/ \___|_|\___\___/|_| |_| |_|\___|"
-  write (*,*)
+   !call system('figlet welcome')
+   write (*, *) "              _                          "
+   write (*, *) "__      _____| | ___ ___  _ __ ___   ___ "
+   write (*, *) "\ \ /\ / / _ \ |/ __/ _ \| '_ ` _ \ / _ \"
+   write (*, *) " \ V  V /  __/ | (_| (_) | | | | | |  __/"
+   write (*, *) "  \_/\_/ \___|_|\___\___/|_| |_| |_|\___|"
+   write (*, *)
 !========================================================================================!
-  call env%ref%to(mol)
-  write (*,*)
-  write (*,*) 'Input structure:'
-  call mol%append(stdout)
-  write (*,*)
+   call env%ref%to(mol)
+   write (*, *)
+   write (*, *) 'Input structure:'
+   call mol%append(stdout)
+   write (*, *)
 !!========================================================================================!
 !
 !  allocate (grad(3,mol%nat),source=0.0_wp)
-  ! call env2env%calc(env,env%calc,mol)
-  ! env%calc%env%calcs(1)%rdwbo = .true.
-  ! call env%calc%info(stdout)
+   ! call env2env%calc(env,env%calc,mol)
+   ! env%calc%env%calcs(1)%rdwbo = .true.
+   ! call env%calc%info(stdout)
 !
 !  call engrad(mol,env%calc,energy,grad,io)
 !  call env%calculation_summary(env%calc,mol,energy,grad)
 !========================================================================================!
 
-  ! allocate(mol%gradient(3,mol%nat), source=1.0_wp)
-  ! call mol%write('dummy.extxyz')
-  !
-  !
-  ! call molnew%open("dummy.extxyz")
-  ! call molnew%write("dummy2.extxyz")
-  
-  pr = .true.
+   ! allocate(mol%gradient(3,mol%nat), source=1.0_wp)
+   ! call mol%write('dummy.extxyz')
+   !
+   !
+   ! call molnew%open("dummy.extxyz")
+   ! call molnew%write("dummy2.extxyz")
 
-  block
-    type(coord),allocatable :: structures(:)
-    type(coord) :: init_mol
-    ! type(cashed_hessian) :: chess 
-    integer :: i, nall, steps
-    real(wp) :: etot
-     call rdensemble(env%inputcoords,nall,structures)
-    ! write(*,*) nall,'structures read from ',env%inputcoords
-    ! do i=1,5
-    ! write(*,*) structures(1)%xyz(:,i)
-    ! enddo
-    ! do i=1,5
-    ! write(*,*) structures(1)%gradient(:,i)
-    ! enddo
-    ! call wrensemble('dummyensemble.xyz',nall,structures)
-    allocate(env%calc%chess)
-    write(*,*) env%calc%hu_steps
-    call env%calc%chess%alloc(structures(1)%nat,env%calc%hu_steps,env%calc%initialize_hr_type,env%calc%hr_hu_type,hguess=env%calc%chess_id_guess)
-    do i=1,nall
-      call env%calc%chess%update(structures(i)%gradient,structures(i)%xyz)
-    enddo
+   pr = .true.
 
-    write(*,*) nall
+   block
+      type(coord), allocatable :: structures(:), structures2(:)
+      type(coord) :: init_mol
+      ! type(cashed_hessian) :: chess
+      integer :: i, nall, steps
+      real(wp) :: etot, rmsdval
+      call rdensemble(env%inputcoords, nall, structures)
 
-    init_mol = structures(nall)
-    write(*,*) env%calc%chess%hguess
-    call initialize_hessian(env%calc, env%calc%chess%initialize_type,env%calc%chess%coords(nall,:,:), &
-      &init_mol%nat,init_mol%at,env%calc%chess%hess(:),env%calc%chess%hguess,pr)
+      call rdensemble(env%inputcoords, nall, structures2)
+      ! write(*,*) nall,'structures read from ',env%ineutcoords
+      ! do i=1,5
+      ! write(*,*) structures(1)%xyz(:,i)
+      ! enddo
+      ! do i=1,5
+      ! write(*,*) structures(1)%gradient(:,i)
+      ! enddo
+      ! call wrensemble('dummyensemble.xyz',nall,structures)
+      ! structures2%xyz = structures%gradient
+      do i = 1, nall
+         if (i .ne. 1) then
+            rmsdval = rmsd(structures(i), structures(i - 1))
+            write (stdout, *) i - 1, "to", i, ":", rmsdval
 
-    call env%calc%chess%construct_hessian()
-
-    etot=structures(nall)%energy
-
-    write(stdout,*) env%calc%sthr, env%thermo%sthr
-    call calc_thermo_from_hess(structures(nall), env%calc%chess%H,pr, &
-    & env%calc%nt, env%calc%temperatures,env%calc%ithr,env%calc%fscal,env%calc%sthr,env%calc%et, &
-    & env%calc%ht, env%calc%gt, env%calc%stot, etot, env%calc%emodel)
-  end block
+            ! rmsdval = rmsd(structures(i), structures(i - 1))
+            ! write (stdout, *) i - 1, "to", i, ":", rmsdval
+         end if
+      end do
+   end block
 !========================================================================================!
-  call tim%stop(14)
-  return
+   call tim%stop(14)
+   return
 end subroutine crest_playground
