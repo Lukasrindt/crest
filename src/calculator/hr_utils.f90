@@ -12,6 +12,8 @@ module hr_utils
 
    public initialize_hessian
    public generate_chess_list
+   public diagonalize_matrix
+   public prj_hess
 
 contains
 
@@ -169,17 +171,113 @@ contains
       ! list = .false.
       ! list(1) = .true.
       ! last = 1
-      ! do i = 1, nall
+      ! do i = 2, nall
       !    rmsdval = rmsd(structures(i), structures(last))
       !    if (rmsdval > 0.10) then
       !       list(i) = .true.
       !       last = i
       !    end if
+      !    write (*, *) rmsdval, list(i)
       ! end do
 
-      list(:) = .true.
+      list(:) = .false.
+      list(1:10) = .true.
+      list(nall) = .true.
       ! write(*,*) list
       nstruc = count(list)
    end subroutine generate_chess_list
 
+   subroutine prj_hess(nat, nat3, xyz, hess, phess_ut)
+!***************************************************************
+!* Projection of the translational and rotational DOF out of
+!* the numerical Hessian (wrapper)
+!***************************************************************
+      implicit none
+
+      integer, intent(in) :: nat, nat3
+      real(wp), intent(inout) :: hess(nat3, nat3)
+      real(wp), intent(in) ::  xyz(3, nat)
+      real(wp), intent(in), optional, target :: phess_ut(:)
+      !real(wp) ::  hess_ut(nat3*(nat3+1)/2),pmode(nat3,1)
+      real(wp), allocatable, target :: hess_ut(:)
+      real(wp), allocatable :: pmode(:, :)
+      real(wp), pointer :: phess(:)
+      integer :: i
+
+      if (present(phess_ut)) then
+         phess => phess_ut
+      else
+         !$omp critical
+         allocate (hess_ut(nat3*(nat3 + 1)/2), source=0.0_wp)
+         phess => hess_ut
+         !$omp end critical
+      end if
+      !$omp critical
+      allocate (pmode(nat3, 1), source=0.0_wp)
+      !$omp end critical
+
+      !> Transforms matrix of the upper triangle vector
+      call dsqtoh(nat3, hess, phess)
+
+      !> Projection
+      call trproj(nat, nat3, xyz, phess, .false., 0, pmode, 1)
+
+      !> Transforms vector of the upper triangle into matrix
+      call dhtosq(nat3, hess, phess)
+   end subroutine prj_hess
+
+subroutine diagonalize_matrix(n, A, evals, info)
+!*******************************************************************
+!* LAPACK wrapper for symmetric matrix diagonalization
+!*
+!* Solves: A x = λ x
+!* A is overwritten by eigenvectors
+!*******************************************************************
+
+   implicit none
+
+   integer, intent(in)    :: n
+   real(wp), intent(inout) :: A(n,n)
+   real(wp), intent(out)  :: evals(n)
+   integer, intent(out)   :: info
+
+   real(wp), allocatable :: work(:), workspace
+   integer, allocatable   :: iwork(:)
+
+   integer :: lwork, liwork
+
+   external :: dsyevd
+
+   !---------------------------------------------------------------
+   ! Query optimal workspace
+   !---------------------------------------------------------------
+   lwork  = -1
+   liwork = -1
+
+   allocate(work(1), iwork(1))
+
+   call dsyevd('V','U', n, A, n, evals, work, lwork, iwork, liwork, info)
+
+   if (info /= 0) then
+      print *, "Workspace query failed, info=", info
+      return
+   end if
+
+   ! optimal sizes returned in work(1), iwork(1)
+   lwork  = int(work(1))
+   liwork = iwork(1)
+
+   deallocate(work, iwork)
+
+   allocate(work(lwork), iwork(liwork))
+
+   !---------------------------------------------------------------
+   ! Actual diagonalization
+   !---------------------------------------------------------------
+   call dsyevd('V','U', n, A, n, evals, work, lwork, iwork, liwork, info)
+
+   deallocate(work, iwork)
+
+end subroutine diagonalize_matrix
+ 
 end module hr_utils

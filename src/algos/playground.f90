@@ -34,6 +34,10 @@ subroutine crest_playground(env, tim)
    use hessian_reconstruct
    use hr_utils
    use irmsd_module
+   use hessian_quality
+   use thermochem_module
+   use optimize_maths
+   use hessupdate_module
    implicit none
    type(systemdata), intent(inout) :: env
    type(timer), intent(inout)      :: tim
@@ -92,32 +96,16 @@ subroutine crest_playground(env, tim)
    block
       type(coord), allocatable :: structures(:), structures2(:)
       type(coord) :: init_mol
+      type(step_monitor) :: mon
       ! type(cashed_hessian) :: chess
-      integer :: i, nall, steps
-      real(wp) :: etot, rmsdval
+      integer :: i, nall, steps, nstruc, last_struc, nat3, idx
+      real(wp) :: etot, rmsdval, gnorm
+      real(wp), allocatable :: s_vec(:), temp_s(:, :), Y(:, :), S(:, :)
+      real(wp) :: gain
+      logical:: accepted
+      logical, allocatable :: acc_list(:)
+
       call rdensemble(env%inputcoords, nall, structures)
-
-      call rdensemble(env%inputcoords, nall, structures2)
-      ! write(*,*) nall,'structures read from ',env%ineutcoords
-      ! do i=1,5
-      ! write(*,*) structures(1)%xyz(:,i)
-      ! enddo
-      ! do i=1,5
-      ! write(*,*) structures(1)%gradient(:,i)
-      ! enddo
-      ! call wrensemble('dummyensemble.xyz',nall,structures)
-      ! structures2%xyz = structures%gradient
-      do i = 1, nall
-         if (i .ne. 1) then
-            rmsdval = rmsd(structures(i), structures(i - 1))
-            write (stdout, *) i - 1, "to", i, ":", rmsdval
-
-            ! rmsdval = rmsd(structures(i), structures(i - 1))
-            ! write (stdout, *) i - 1, "to", i, ":", rmsdval
-         end if
-      end do
    end block
-!========================================================================================!
-   call tim%stop(14)
-   return
+
 end subroutine crest_playground

@@ -13,7 +13,7 @@ module thermochem_module
    public :: frequencies
    public :: effective_hessian
    public :: prj_mw_hess, mass_weight_hess
-   public :: calcthermo, calc_thermo_from_hess
+   public :: calcthermo, calc_thermo_from_hess, calcthermo_from_modes
    public :: print_vib_spectrum, print_hessian, print_g98_fake
 
 !=============================================================================!
@@ -29,7 +29,7 @@ contains  !> MODULE PROCEDURES STARTE HERE
       integer, intent(in) :: nat
       integer, intent(in) :: at(nat)
       real(wp), intent(in) :: xyz(3, nat)
-      real(wp) :: prj_mw_hess(nat3, nat3)
+      real(wp), intent(inout) :: prj_mw_hess(nat3, nat3)
 
       integer :: io, nat3
       logical :: pr
@@ -158,6 +158,7 @@ contains  !> MODULE PROCEDURES STARTE HERE
       call mass_weight_hess(nat, at, nat3, hess)
 
    end subroutine prj_mw_hess
+
 
    !============================================================================!
    !############################################################################!
@@ -515,6 +516,58 @@ contains  !> MODULE PROCEDURES STARTE HERE
       end if
 
    end subroutine calc_thermo_from_hess
+
+   subroutine calcthermo_from_modes(mol, freq, pr, ithr, fscal, sthr, nt, temps,&
+   & et, ht, gt, stot, etot, emodel)
+      type(coord), intent(inout) :: mol
+      integer :: nat3
+      integer :: io, iunit
+      logical :: pr
+      real(wp) :: ithr, fscal, sthr
+      real(wp), intent(in) :: temps(nt)
+      integer, intent(in) :: nt
+      real(wp), allocatable, intent(out) :: et(:), ht(:), gt(:), stot(:)
+      real(wp), intent(inout) :: freq(:)
+      real(wp), intent(in) :: etot
+      real(wp) :: zpve
+      integer :: nrt
+      real(wp), allocatable :: int_temps(:)
+      character(len=*), parameter :: outfmt = &
+      &  '(10x,"::",1x,a,f24.12,1x,a,1x,"::")'
+      character(len=*), intent(in) :: emodel
+
+      nat3 = 3*mol%nat
+      !$omp critical
+      allocate (et(nt))
+      allocate (ht(nt))
+      allocate (gt(nt))
+      allocate (stot(nt))
+      allocate (int_temps(nt))
+      !$omp end critical
+
+      int_temps = abs(temps - 298.15_wp)
+      nrt = minloc(int_temps(:), 1)
+
+      call calcthermo(mol%nat, mol%at, mol%xyz, freq, pr, ithr, fscal, sthr, nt, temps, &
+          &      et, ht, gt, stot, emodel=emodel)
+
+      zpve = et(nrt) - ht(nrt)
+
+      if (pr) then
+         write (stdout, *)
+         write (stdout, '(10x,a)') repeat(':', 50)
+         write (stdout, '(10x,"::",7x,a,f12.2,1x,a,8x,"::")') "THERMODYNAMICS at", temps(nrt), 'K'
+         write (stdout, '(10x,a)') repeat(':', 50)
+         write (stdout, outfmt) 'TOTAL FREE ENERGY', etot + gt(nrt), 'Eh'
+         write (stdout, '(10x,a)') '::'//repeat('-', 46)//'::'
+         write (stdout, outfmt) 'total energy     ', etot, 'Eh'
+         write (stdout, outfmt) 'ZPVE             ', zpve, 'Eh'
+         write (stdout, outfmt) 'G(RRHO) w/o ZPVE ', gt(nrt) - zpve, 'Eh'
+         write (stdout, outfmt) 'G(RRHO) total    ', gt(nrt), 'Eh'
+         write (stdout, '(10x,a)') repeat(':', 50)
+      end if
+
+   end subroutine calcthermo_from_modes
 
    subroutine effective_hessian(nat, nat3, grad1_i, grad2_i, hess1, hess2, heff)
 !******************************************************************

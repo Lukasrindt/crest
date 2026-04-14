@@ -725,6 +725,10 @@ contains !> MODULE PROCEDURES START HERE
         calc%hr_hu_type = 3
       case ('schlegel')
         calc%hr_hu_type = 4
+      case ('ms_bfgs')
+        calc%hr_hu_type = 5 
+      case ('ms_psb')
+        calc%hr_hu_type = 6
       case default
         !>--- keyword was recognized, but invalid argument supplied
         write (stdout,fmtura) kv%value_c
