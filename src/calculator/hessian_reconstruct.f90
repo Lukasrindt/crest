@@ -16,7 +16,7 @@ module hessian_reconstruct
       real(wp), allocatable :: gradient(:, :, :)
       real(wp), allocatable :: coords(:, :, :)
       real(wp), allocatable :: energy(:)
-      real(wp), allocatable :: H(:, :),S(:,:)
+      real(wp), allocatable :: H(:, :), S(:, :), Y(:, :)
       integer, allocatable :: order(:), natm
       integer :: stepcount = 0
       real(wp) :: hguess = 0.02_wp
@@ -87,7 +87,7 @@ contains
       class(cashed_hessian), intent(inout) :: self
       integer :: i, j, k, nat3
       real(wp), allocatable :: tmp(:), tmp_coords(:, :), tmp_grads(:, :), dx(:)
-      real(wp), allocatable :: S(:,:), Y(:,:)
+      real(wp), allocatable :: S(:, :), Y(:, :)
       real(wp) :: gnorm
       integer :: unit, iter, made_iters
 
@@ -141,16 +141,21 @@ contains
          call dhtosq(nat3, self%H(:, :), self%hess(:))
 
          allocate (S(nat3, self%steps - 1)) !CAUTION, steps needs to be initialized properly.
-         allocate(self%S(nat3,self%steps - 1))
+         allocate (self%S(nat3, self%steps - 1), self%Y(nat3, self%steps - 1))
          allocate (Y(nat3, self%steps - 1)) ! SHould be refactored to come from length of coord vector?
 
-         do i = 1, self%steps - 1
-            S(:, i) = reshape(self%coords(self%steps, :, :) - self%coords(i, :, :), [nat3])
-            Y(:, i) = reshape(self%gradient(self%steps, :, :) - self%gradient(i, :, :), [nat3])
+         do i = 1, self%steps-1
+            S(:, i) = reshape(self%coords(self%steps, :, :) - self%coords(i-1, :, :), [nat3])
+            Y(:, i) = reshape(self%gradient(self%steps, :, :) - self%gradient(i-1, :, :), [nat3])
          end do
-          self%S = S
-         if (self%hu_type==5) call ms_bfgs_update(nat3, self%steps - 1, self%H, S, Y) !For this, init need to be placed in self%H
-         if (self%hu_type==6) call ms_psb_update(nat3, self%steps - 1, self%H, S, Y)
+         self%S = S
+         self%Y = Y
+         ! write (*, *) self%Y
+         if (self%hu_type == 5) call ms_bfgs_update(nat3, self%steps - 1, self%H, S, Y) !For this, init need to be placed in self%H
+         if (self%hu_type == 6) call ms_psb_update(nat3, self%steps - 1, self%H, S, Y)
+         if (self%hu_type == 7) call ms_bfgs_polar_regularized(nat3, self%steps - 1, self%H, S, Y)
+         if (self%hu_type == 8) call ms_rsr_inverse_update(nat3, self%steps - 1, self%H, S, Y)
+         if (self%hu_type == 9) call ms_rsr_polar_update(nat3, self%steps - 1, self%H, S, Y)
 
       end if
 
@@ -185,101 +190,219 @@ contains
 
    end subroutine update_hessian
 
+   subroutine mode_quality_analysis(self, type, init_hess, modes, n_modes, quality)
+      !*******************************************************************
+      !* Assess how well each Hessian eigenvector was sampled during reconstruction.
+      !*
+      !* Updated: uses QR decomposition to obtain an orthonormal basis Q
+      !* so that projection is mathematically correct:
+      !*   quality(i) = || Q Q^T v_i ||^2 = sum_j (q_j · v_i)^2
+      !*
+      !*******************************************************************
+      implicit none
 
-   subroutine mode_quality_analysis(self, modes, n_modes, quality)
-  !*******************************************************************
-  !* Assess how well each Hessian eigenvector was sampled during reconstruction.
-  !*
-  !* Updated: uses QR decomposition to obtain an orthonormal basis Q
-  !* so that projection is mathematically correct:
-  !*   quality(i) = || Q Q^T v_i ||^2 = sum_j (q_j · v_i)^2
-  !*
-  !*******************************************************************
-  implicit none
+      real(wp), intent(in)  :: modes(:, :)   ! (n3, n_modes)
+      real(wp), intent(inout) :: init_hess(:, :)
+      integer, intent(in)  :: n_modes
+      class(cashed_hessian) :: self
+      real(wp), intent(out) :: quality(:)! (n_modes)
+      integer, intent(in) :: type
 
-  real(wp), intent(in)  :: modes(:, :)   ! (n3, n_modes)
-  integer,  intent(in)  :: n_modes
-  class(cashed_hessian) :: self
-  real(wp), intent(out) :: quality(:)   ! (n_modes)
+      real(wp), allocatable :: Q(:, :), lambda(:), C(:, :), P(:, :)
+      real(wp), allocatable :: tau(:), work(:), v_approx(:, :)
+      real(wp) :: proj, temp, overlap
+      integer  :: i, j, nat3, m, n, lwork, info, n_upmodes
+      external :: dgeqrf
+      external :: dorgqr
+      real(wp), external :: ddot
 
-  real(wp), allocatable :: Q(:, :)
-  real(wp), allocatable :: tau(:), work(:)
-  real(wp) :: proj
-  integer  :: i, j, nat3, m, n, lwork, info,n_upmodes
-  external :: dgeqrf
-  external :: dorgqr
+      quality = 0.0_wp
+      nat3 = self%natm*3
 
-  nat3 = self%natm*3
-  m = nat3
-  n = self%steps - 1   ! number of step vectors
+      select case (type)
+      case (1)
 
-  ! Copy S into Q (will be overwritten by QR)
-  allocate(Q(m, n))
-  Q = self%S(:, 1:n)
+         do i = 1, nat3
+            do j = 1, nat3
+               temp = ddot(nat3, init_hess(:, j), 1, modes(:, i), 1)
+               if (temp > quality(i)) quality(i) = temp
+            end do
+         end do
 
-  allocate(tau(min(m,n)))
+         quality = abs(1 - quality)
+         do i = 1, nat3
+            write (*, *) "quality of the", i, "th mode", quality(i)
+         end do
+      case (2)
+         quality = 0.0_wp
+         allocate (lambda(self%steps - 1), C(self%steps - 1, self%steps - 1), v_approx(nat3, self%steps - 1))
+         allocate (P(nat3, self%steps - 1), Q(nat3, self%steps - 1))
+         P = self%Y
+         Q = self%S
+         call generalized_secant_eigen(Q, P, nat3, self%steps - 1, lambda, C)
+         do i = 1, self%steps - 1
+            v_approx(:, i) = matmul(self%Y, C(:, i))
+            if (norm2(v_approx(:, i)) > 1e-12_wp) then
+               v_approx(:, i) = v_approx(:, i)/norm2(v_approx(:, i))
+            else
+               v_approx(:, i) = 0.0_wp
+            end if
+         end do
+         do j = 1, nat3
+            do i = 1, self%steps - 1
+               overlap = abs(ddot(nat3, v_approx(:, i), 1, modes(:, j), 1))
+               quality(j) = quality(j) + overlap**2
+            end do
+         end do
+         quality = quality/(maxval(quality) + 1.0e-12_wp)
+         do i = 1, nat3
+            write (*, *) "quality of the", i, "th mode", quality(i)
+         end do
+      end select
 
-  ! Workspace query
-  allocate(work(1))
-  call dgeqrf(m, n, Q, m, tau, work, -1, info)
-  lwork = int(work(1))
-  deallocate(work)
-  allocate(work(lwork))
+      !THIS IS A PROJECTION INTO THE S VECTORSPACE WITH PREVIOUS ORTHOGONALIZATION
+      ! m = nat3
+      ! n = self%steps - 1   ! number of step vectors
+      !
+      ! ! Copy S into Q (will be overwritten by QR)
+      ! allocate(Q(m, n))
+      ! Q = self%S(:, 1:n)
+      !
+      ! allocate(tau(min(m,n)))
+      !
+      ! ! Workspace query
+      ! allocate(work(1))
+      ! call dgeqrf(m, n, Q, m, tau, work, -1, info)
+      ! lwork = int(work(1))
+      ! deallocate(work)
+      ! allocate(work(lwork))
+      !
+      ! ! Compute QR factorization
+      ! call dgeqrf(m, n, Q, m, tau, work, lwork, info)
+      !
+      ! ! Generate explicit Q
+      ! deallocate(work)
+      ! allocate(work(1))
+      ! call dorgqr(m, n, min(m,n), Q, m, tau, work, -1, info)
+      ! lwork = int(work(1))
+      ! deallocate(work)
+      ! allocate(work(lwork))
+      !
+      ! call dorgqr(m, n, min(m,n), Q, m, tau, work, lwork, info)
+      !
+      ! ! ---- Compute quality using orthonormal Q ----
+      ! do i = 1, n_modes
+      !    quality(i) = 0.0_wp
+      !    do j = 1, n
+      !       proj = dot_product(Q(:, j), modes(:, i))
+      !       quality(i) = quality(i) + proj**2
+      !    end do
+      ! end do
+      ! n_upmodes = 0
+      ! do i=1,nat3
+      ! write(*,*) quality(i)
+      ! if (quality(i)< 0.002_wp)n_upmodes = n_upmodes +1
+      ! enddo
+      ! write(*,*) n_upmodes
+      !*******************************************************************
+      ! Original implementation (incorrect if S not orthonormal)
+      !*******************************************************************
+      !
+      ! real(wp), allocatable :: proj_vec(:)
+      ! real(wp) :: proj
+      ! integer  :: i, j, nat3
+      !
+      ! nat3 = self%natm*3
+      ! allocate (proj_vec(nat3))
+      !
+      ! do i = 1, n_modes
+      !    proj_vec = 0.0_wp
+      !    do j = 1, self%steps-1
+      !       proj = dot_product(self%S(:, j), modes(:, i))
+      !       proj_vec = proj_vec + proj*self%S(:,j)
+      !    end do
+      !
+      !    quality(i) = sum(proj_vec**2)
+      !    quality(i) = max(0.0_wp, min(1.0_wp, quality(i)))
+      ! end do
+      !
+      ! deallocate (proj_vec)
+      !
+      !*******************************************************************
 
-  ! Compute QR factorization
-  call dgeqrf(m, n, Q, m, tau, work, lwork, info)
+      ! deallocate(Q, tau, work)
 
-  ! Generate explicit Q
-  deallocate(work)
-  allocate(work(1))
-  call dorgqr(m, n, min(m,n), Q, m, tau, work, -1, info)
-  lwork = int(work(1))
-  deallocate(work)
-  allocate(work(lwork))
+   end subroutine mode_quality_analysis
 
-  call dorgqr(m, n, min(m,n), Q, m, tau, work, lwork, info)
+   subroutine generalized_secant_eigen(S, Y, n, msec, lambda, C)
+      implicit none
+      integer, intent(in) :: n, msec
+      real(wp), intent(in) :: S(n, msec), Y(n, msec)
+      real(wp), intent(out):: lambda(msec)
+      real(wp), intent(out):: C(msec, msec)
 
-  ! ---- Compute quality using orthonormal Q ----
-  do i = 1, n_modes
-     quality(i) = 0.0_wp
-     do j = 1, n
-        proj = dot_product(Q(:, j), modes(:, i))
-        quality(i) = quality(i) + proj**2
-     end do
-  end do
-  n_upmodes = 0
-  do i=1,nat3
-  write(*,*) quality(i)
-  if (quality(i)< 0.02_wp)n_upmodes = n_upmodes +1
-  enddo
-  write(*,*) n_upmodes
-  !*******************************************************************
-  ! Original implementation (incorrect if S not orthonormal)
-  !*******************************************************************
-  !
-  ! real(wp), allocatable :: proj_vec(:)
-  ! real(wp) :: proj
-  ! integer  :: i, j, nat3
-  !
-  ! nat3 = self%natm*3
-  ! allocate (proj_vec(nat3))
-  !
-  ! do i = 1, n_modes
-  !    proj_vec = 0.0_wp
-  !    do j = 1, self%steps-1
-  !       proj = dot_product(self%S(:, j), modes(:, i))
-  !       proj_vec = proj_vec + proj*self%S(:,j)
-  !    end do
-  !
-  !    quality(i) = sum(proj_vec**2)
-  !    quality(i) = max(0.0_wp, min(1.0_wp, quality(i)))
-  ! end do
-  !
-  ! deallocate (proj_vec)
-  !
-  !*******************************************************************
+      real(wp), allocatable :: A(:, :), B(:, :)
+      real(wp), allocatable :: alphar(:), alphai(:), beta(:)
+      real(wp), allocatable :: vl(:, :), vr(:, :), work(:)
+      integer :: lwork, info, i
 
-  deallocate(Q, tau, work)
+      !--------------------------------------------------------
+      ! Build reduced secant matrices
+      ! A = Y^T Y
+      ! B = S^T Y
+      !--------------------------------------------------------
 
-end subroutine mode_quality_analysis
+      allocate (A(msec, msec))
+      allocate (B(msec, msec))
+
+      A = matmul(transpose(Y), Y)
+      B = matmul(transpose(S), Y)
+
+      allocate (alphar(msec), alphai(msec), beta(msec))
+      allocate (vl(msec, msec), vr(msec, msec))
+
+      !--------------------------------------------------------
+      ! Workspace query
+      !--------------------------------------------------------
+
+      lwork = -1
+      allocate (work(1))
+
+      call dggev('N', 'V', msec, A, msec, B, msec, &
+                 alphar, alphai, beta, &
+                 vl, msec, vr, msec, work, lwork, info)
+
+      lwork = int(work(1))
+      ! if (info /= 0) then
+      !    print *, "DGGEV workspace query failed, info=", info
+      !    stop
+      ! end if
+      deallocate (work)
+      allocate (work(lwork))
+      !--------------------------------------------------------
+      ! Solve generalized eigenproblem
+      !--------------------------------------------------------
+
+      call dggev('N', 'V', msec, A, msec, B, msec, &
+                 alphar, alphai, beta, &
+                 vl, msec, vr, msec, work, lwork, info)
+
+      !--------------------------------------------------------
+      ! Convert eigenvalues
+      !--------------------------------------------------------
+
+      do i = 1, msec
+         if (abs(beta(i)) > 1.0e-12_wp) then
+            lambda(i) = alphar(i)/beta(i)
+         else
+            lambda(i) = 0.0_wp
+         end if
+      end do
+
+      C = vr
+
+      deallocate (A, B, alphar, alphai, beta, vl, vr, work)
+
+   end subroutine
+
 end module hessian_reconstruct

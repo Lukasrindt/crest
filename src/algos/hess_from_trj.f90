@@ -26,6 +26,7 @@ subroutine hess_from_trj(env, tim)
    use hr_utils
    use thermochem_module
    use hessian_quality
+   use optimize_maths
    implicit none
    type(systemdata), intent(inout) :: env
    type(timer), intent(inout)      :: tim
@@ -49,7 +50,7 @@ subroutine hess_from_trj(env, tim)
    integer :: nall, steps, nstruc,nat3, n_repaired
    real(wp) :: etot
    logical, allocatable :: list(:)
-   real(wp), allocatable :: hess(:,:), freqs(:), quality(:), final_hess(:,:)
+   real(wp), allocatable :: hess(:,:), freqs(:), quality(:), final_hess(:,:), init_hess(:,:), init_eigenvalues(:)
    
 
 !========================================================================================!
@@ -79,7 +80,7 @@ subroutine hess_from_trj(env, tim)
    ! nstruc = ceiling(real(nall)/real(env%calc%chess_space))
    ! write (*, *) "Number of Strucs:", nstruc
    allocate (list(nall))
-   call generate_chess_list(env%calc, nall, list, nstruc, structures)
+   call generate_chess_list(env%calc, nall, list, nstruc, structures, env%calc%cos_thresh)
   call env%calc%chess%alloc(structures(1)%nat,nstruc,env%calc%initialize_hr_type,env%calc%hr_hu_type,hguess=env%calc%chess_id_guess)
 
    ! do i = 1, nall - 1, env%calc%chess_space
@@ -92,31 +93,34 @@ subroutine hess_from_trj(env, tim)
       end if
    end do
 
-   ! call env%calc%chess%update(structures(nall)%gradient, structures(nall)%xyz)
-
-   ! write (*, *) env%calc%chess%order
-
-   idx = maxloc(env%calc%chess%order, 1)
-   ! if (minval(env%calc%chess%order) .eq. 0) idx = 1
+   idx = minloc(env%calc%chess%order, 1)
+   if (minval(env%calc%chess%order) .eq. 0) idx = 1
 
    init_mol = structures(idx)
    call initialize_hessian(env%calc, env%calc%chess%initialize_type, env%calc%chess%coords(idx, :, :), &
      & init_mol%nat, init_mol%at, env%calc%chess%hess(:), env%calc%chess%hguess, pr)
-
+   allocate(init_hess(nat3,nat3))
    call env%calc%chess%construct_hessian()
+  
+   call dhtosq(nat3,init_hess,env%calc%chess%hess)
 
   call prj_hess(structures(nall)%nat, nat3, structures(nall)%xyz, env%calc%chess%H)
   allocate(freqs(nat3), final_hess(nat3,nat3))
   call diagonalize_matrix(nat3, env%calc%chess%H,freqs,info)
 
-   ! call prj_mw_hess(structures(nall)%nat, structures(nall)%at, nat3, structures(nall)%xyz,env%calc%chess%H)
    allocate(hess(nat3,nat3))
    hess = env%calc%chess%H !Will store modes
-   ! call frequencies(structures(nall)%nat, structures(nall)%at, structures(nall)%xyz,nat3,hess,freqs,io)
    allocate(quality(nat3))
 
-   call env%calc%chess%mode_quality_analysis(hess,nat3,quality)
-   call selective_hessian_repair(structures(nall),env%calc,hess,freqs,quality,nat3,0.005_wp,0.001_wp,n_repaired, final_hess)
+  allocate(init_eigenvalues(nat3))
+  call prj_hess(structures(idx)%nat, nat3, structures(idx)%xyz, init_hess)
+  call diagonalize_matrix(nat3, init_hess,init_eigenvalues, info)
+
+   call env%calc%chess%mode_quality_analysis(1,init_hess,hess,nat3,quality)
+   ! quality = 0.000000001_wp
+   ! quality(1:20) = 0.00001
+   pr = .true.
+   call selective_hessian_repair_v2(structures(nall),env%calc,hess,freqs,quality,nat3,0.2_wp,0.005_wp,n_repaired, final_hess,pr)
   !
    etot = structures(nall)%energy
   !  call calcthermo_from_modes(structures(nall),&

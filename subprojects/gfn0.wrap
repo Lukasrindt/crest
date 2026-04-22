@@ -1,7 +1,0 @@
-[wrap-git]
-url = https://github.com/grimme-lab/gfn0
-revision = head
-clone-recursive = true
-
-[provide]
-gfn0 = gfn0_dep

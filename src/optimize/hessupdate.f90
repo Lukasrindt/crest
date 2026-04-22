@@ -28,7 +28,10 @@ module hessupdate_module
    public :: bofill
    public :: schlegel
    public :: ms_bfgs_update
+   public :: ms_bfgs_polar_regularized
    public :: ms_psb_update
+   public :: ms_rsr_polar_update
+   public :: ms_rsr_inverse_update
 
 !========================================================================================!
 !========================================================================================!
@@ -600,7 +603,135 @@ contains  !> MODULE PROCEDURES START HERE
 
    end subroutine ms_bfgs_update
 
-!===========================================================
+   subroutine ms_bfgs_polar_regularized(n, q, B, S, Y)
+   implicit none
+   integer, intent(in) :: n, q
+   real(8), intent(inout) :: B(n, n)
+   real(8), intent(in) :: S(n, q), Y(n, q)
+
+   real(8) :: YtS(q, q), StBS(q, q)
+   real(8) :: BS(n, q)
+   real(8) :: term1(n, n), term2(n, n)
+
+   real(8) :: RHS(q, n), X(q, n)
+
+   ! polar inverse machinery
+   real(8) :: AtA(q, q)
+   real(8) :: eigvec(q, q), eigval(q)
+   real(8) :: Hinv(q, q)
+
+   integer :: i, j, k, info, lwork
+   real(8), allocatable :: work(:)
+   real(8) :: tau
+
+   tau = 1d-12
+
+   !=========================================================
+   ! TERM 1: Y (Y^T S)^{-1} Y^T  via polar inverse
+   !=========================================================
+
+   YtS = matmul(transpose(Y), S)
+
+   ! Build AtA = (Y^T S)^T (Y^T S)
+   AtA = matmul(transpose(YtS), YtS)
+
+   ! Eigen-decomposition of AtA
+   eigvec = AtA
+
+   lwork = -1
+   allocate(work(1))
+   call dsyev('V','U', q, eigvec, q, eigval, work, lwork, info)
+   lwork = int(work(1))
+   deallocate(work)
+   allocate(work(lwork))
+
+   call dsyev('V','U', q, eigvec, q, eigval, work, lwork, info)
+   deallocate(work)
+
+   if (info /= 0) stop "DSYEV failed (YtS)"
+
+   ! Build H^{-1} = (AtA)^(-1/2)
+   do i = 1, q
+      if (eigval(i) > tau) then
+         eigval(i) = 1d0 / sqrt(eigval(i))
+      else
+         eigval(i) = 0d0
+      end if
+   end do
+
+   Hinv = 0d0
+   do i = 1, q
+      do j = 1, q
+         do k = 1, q
+            Hinv(i,j) = Hinv(i,j) + eigvec(i,k)*eigval(k)*eigvec(j,k)
+         end do
+      end do
+   end do
+
+   ! X = Hinv * Y^T
+   RHS = transpose(Y)
+   X = matmul(Hinv, RHS)
+
+   term1 = matmul(Y, X)
+
+   !=========================================================
+   ! TERM 2: B S (S^T B S)^{-1} (B S)^T via polar inverse
+   !=========================================================
+
+   BS = matmul(B, S)
+
+   StBS = matmul(transpose(S), BS)
+
+   ! Build AtA = (S^T B S)^T (S^T B S)
+   AtA = matmul(transpose(StBS), StBS)
+
+   eigvec = AtA
+
+   lwork = -1
+   allocate(work(1))
+   call dsyev('V','U', q, eigvec, q, eigval, work, lwork, info)
+   lwork = int(work(1))
+   deallocate(work)
+   allocate(work(lwork))
+
+   call dsyev('V','U', q, eigvec, q, eigval, work, lwork, info)
+   deallocate(work)
+
+   if (info /= 0) stop "DSYEV failed (StBS)"
+
+   do i = 1, q
+      if (eigval(i) > tau) then
+         eigval(i) = 1d0 / sqrt(eigval(i))
+      else
+         eigval(i) = 0d0
+      end if
+   end do
+
+   Hinv = 0d0
+   do i = 1, q
+      do j = 1, q
+         do k = 1, q
+            Hinv(i,j) = Hinv(i,j) + eigvec(i,k)*eigval(k)*eigvec(j,k)
+         end do
+      end do
+   end do
+
+   RHS = transpose(BS)
+   X = matmul(Hinv, RHS)
+
+   term2 = matmul(BS, X)
+
+   !=========================================================
+   ! FINAL UPDATE
+   !=========================================================
+
+   B = B + term1 - term2
+
+   call symmetrize(n, B)
+
+end subroutine ms_bfgs_polar_regularized
+
+   !===========================================================
 ! MULTISECANT PSB UPDATE (INVERSE-FREE)
 !
 ! R = Y - B S
@@ -688,8 +819,176 @@ contains  !> MODULE PROCEDURES START HERE
 
    end subroutine ms_psb_update
 
-!===========================================================
-! Symmetrize matrix: B = 0.5*(B + B^T)
+     subroutine ms_rsr_polar_update(n, q, B, S, Y)
+      implicit none
+      integer, intent(in) :: n, q
+      real(8), intent(inout) :: B(n, n)
+      real(8), intent(in) :: S(n, q), Y(n, q)
+
+      real(8) :: BS(n, q), A(n, q)
+      real(8) :: M(q, q), MtM(q, q)
+      real(8) :: eigvec(q, q), eigval(q)
+      real(8) :: Hinv(q, q)
+      real(8) :: tmp(q, n), term(n, n)
+
+      integer :: i, j, info, lwork
+      real(8), allocatable :: work(:)
+      real(8) :: tau
+
+      !-----------------------------------------
+      ! Step 1: A = Y - B S
+      !-----------------------------------------
+      BS = matmul(B, S)
+      A = Y - BS
+
+      !-----------------------------------------
+      ! Step 2: M = S^T A
+      !-----------------------------------------
+      M = matmul(transpose(S), A)
+
+      !-----------------------------------------
+      ! Step 3: MtM = M^T M
+      !-----------------------------------------
+      MtM = matmul(transpose(M), M)
+
+      !-----------------------------------------
+      ! Step 4: eigen-decomposition MtM
+      !-----------------------------------------
+      eigvec = MtM
+
+      lwork = -1
+      allocate (work(1))
+      call dsyev('V', 'U', q, eigvec, q, eigval, work, lwork, info)
+      lwork = int(work(1))
+      deallocate (work)
+      allocate (work(lwork))
+
+      call dsyev('V', 'U', q, eigvec, q, eigval, work, lwork, info)
+      deallocate (work)
+
+      if (info /= 0) stop "DSYEV failed (polar)"
+
+      !-----------------------------------------
+      ! Step 5: build H^{-1} = (MtM)^(-1/2)
+      !-----------------------------------------
+      tau = 1d-10
+
+      do i = 1, q
+         if (eigval(i) > tau) then
+            eigval(i) = 1d0/sqrt(eigval(i))
+         else
+            eigval(i) = 0d0
+         end if
+      end do
+
+      Hinv = 0d0
+      do i = 1, q
+         do j = 1, q
+            Hinv(i, j) = sum(eigvec(i, :)*eigval(:)*eigvec(j, :))
+         end do
+      end do
+
+      !-----------------------------------------
+      ! Step 6: update
+      !-----------------------------------------
+      tmp = matmul(Hinv, transpose(A))
+      term = matmul(A, tmp)
+
+      B = B + term
+      call symmetrize(n, B)
+
+   end subroutine
+
+   subroutine ms_rsr_inverse_update(n, q, B, S, Y)
+
+      implicit none
+      integer, intent(in) :: n, q
+      real(8), intent(inout) :: B(n, n)
+      real(8), intent(in) :: S(n, q), Y(n, q)
+
+      real(8) :: BS(n, q), A(n, q)
+      real(8) :: M(q, q)
+      real(8) :: eigvec(q, q), eigval(q)
+      real(8) :: Minv(q, q)
+      real(8) :: tmp(q, n), term(n, n)
+
+      integer :: i, j, k, info, lwork
+      real(8), allocatable :: work(:)
+      real(8) :: tau
+
+      !-----------------------------------------
+      ! Step 1: A = Y - B S
+      !-----------------------------------------
+      BS = matmul(B, S)
+      A = Y - BS
+
+      !-----------------------------------------
+      ! Step 2: M = S^T A
+      !-----------------------------------------
+      M = matmul(transpose(S), A)
+
+      !-----------------------------------------
+      ! Step 3: symmetrize M
+      !-----------------------------------------
+      do i = 1, q
+         do j = i + 1, q
+            M(i, j) = 0.5d0*(M(i, j) + M(j, i))
+            M(j, i) = M(i, j)
+         end do
+      end do
+
+      !-----------------------------------------
+      ! Step 4: eigen-decomposition of M
+      !-----------------------------------------
+      eigvec = M
+
+      lwork = -1
+      allocate (work(1))
+      call dsyev('V', 'U', q, eigvec, q, eigval, work, lwork, info)
+      lwork = int(work(1))
+      deallocate (work)
+      allocate (work(lwork))
+
+      call dsyev('V', 'U', q, eigvec, q, eigval, work, lwork, info)
+      deallocate (work)
+
+      if (info /= 0) stop "DSYEV failed (sym)"
+
+      !-----------------------------------------
+      ! Step 5: build pseudo-inverse of M
+      !-----------------------------------------
+      tau = 1d-8
+
+      do i = 1, q
+         if (abs(eigval(i)) > tau) then
+            eigval(i) = 1d0/eigval(i)
+         else
+            eigval(i) = 0d0
+         end if
+      end do
+
+      Minv = 0d0
+
+      do i = 1, q
+         do j = 1, q
+            do k = 1, q
+               Minv(i, j) = Minv(i, j) + eigvec(i, k)*eigval(k)*eigvec(j, k)
+            end do
+         end do
+      end do
+
+      !-----------------------------------------
+      ! Step 6: update
+      !-----------------------------------------
+      tmp = matmul(Minv, transpose(A))
+      term = matmul(A, tmp)
+
+      B = B + term
+      call symmetrize(n, B)
+
+   end subroutine
+
+   ! Symmetrize matrix: B = 0.5*(B + B^T)
 !===========================================================
    subroutine symmetrize(n, B)
       integer, intent(in) :: n

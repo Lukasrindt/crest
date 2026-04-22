@@ -158,33 +158,113 @@ contains
 
    end subroutine force_positive_definiteness
 
-   subroutine generate_chess_list(calc, nall, list, nstruc, structures)
+   subroutine generate_chess_list(calc, nall, list, nstruc, structures, cos_thresh)
       type(calcdata), intent(in) :: calc
       integer, intent(in) :: nall
+      real(wp), intent(in) :: cos_thresh
       integer, intent(inout) :: nstruc
       logical, intent(inout):: list(:)
       type(coord), intent(in) :: structures(:)
-      integer :: i, last
+      integer :: i, last, nat3, k, j
       real(wp), allocatable :: prob(:), r(:)
       real(wp) :: rmsdval
+      integer :: n, m
 
-      ! list = .false.
-      ! list(1) = .true.
-      ! last = 1
-      ! do i = 2, nall
-      !    rmsdval = rmsd(structures(i), structures(last))
-      !    if (rmsdval > 0.10) then
-      !       list(i) = .true.
-      !       last = i
-      !    end if
-      !    write (*, *) rmsdval, list(i)
-      ! end do
+      real(wp), allocatable :: S(:, :), Y(:, :)
+      real(wp) :: norm_s(nall - 1), sy(nall - 1), ci(nall - 1)
 
+      real(wp) :: cos_ij, max_cos
+      real(wp) :: c_best
+
+      real(wp), parameter :: eps = 1d-14
+
+
+      nat3 = structures(1)%nat*3
+      n = nat3
       list(:) = .false.
-      list(1:10) = .true.
       list(nall) = .true.
+      ! list(1:10) = .true.
+      ! list(nall) = .true.
+      ! list(nall-15:nall) = .true.
       ! write(*,*) list
+      !
+      !
+      !
+      !-------------------------------------------------------
+      ! STEP 1: build secants
+      !-------------------------------------------------------
+      allocate(S(nat3,nall-1),Y(nat3,nall-1))
+      do i = 1, nall - 1
+         S(:, i) = reshape(structures(nall)%xyz - structures(i)%xyz, [nat3])
+         Y(:, i) = reshape(structures(nall)%gradient - structures(i)%gradient, [nat3])
+      end do
+
+      m = nall
+
+      !-------------------------------------------------------
+      ! STEP 2: basic curvature screening
+      !-------------------------------------------------------
+      c_best = 0d0
+
+      do k = 1, m - 1
+
+         norm_s(k) = sqrt(dot_product(S(:, k), S(:, k)))
+         sy(k) = dot_product(S(:, k), Y(:, k))
+
+         if (norm_s(k) < eps) then
+            list(k) = .false.
+            cycle
+         end if
+
+         if (sy(k) <= 1d-10*norm_s(k)**2) then
+            list(k) = .false.
+            cycle
+         end if
+
+         ci(k) = sy(k)/(norm_s(k)**2 + eps)
+
+         if (ci(k) > c_best) c_best = ci(k)
+
+         list(k) = .true.
+
+      end do
+      write(*,*) "List after first filter:", list
+      !-------------------------------------------------------
+      ! STEP 3: greedy geometric filtering
+      !-------------------------------------------------------
+
+      do k = 1, m - 1
+
+         if (.not. list(k)) cycle
+
+         max_cos = 0d0
+
+         do i = 1, k - 1
+            if (.not. list(i)) cycle
+
+            cos_ij = dot_product(S(:, i), S(:, k))/ &
+                     (sqrt(dot_product(S(:, i), S(:, i)))* &
+                      sqrt(dot_product(S(:, k), S(:, k))) + eps)
+
+            if (abs(cos_ij) > max_cos) max_cos = abs(cos_ij)
+         end do
+
+         ! reject nearly collinear directions
+         if (max_cos > cos_thresh) then
+            list(k) = .false.
+            cycle
+         end if
+
+         ! reject very low-curvature additions (information saturation)
+         ! if (ci(k) < 0.2d0*c_best .and. max_cos > 0.85d0) then
+         !    list(k) = .false.
+         !    cycle
+         ! end if
+
+      end do
+
       nstruc = count(list)
+      write(*,*) "Accepted Structures List:", list
    end subroutine generate_chess_list
 
    subroutine prj_hess(nat, nat3, xyz, hess, phess_ut)
@@ -226,7 +306,7 @@ contains
       call dhtosq(nat3, hess, phess)
    end subroutine prj_hess
 
-subroutine diagonalize_matrix(n, A, evals, info)
+   subroutine diagonalize_matrix(n, A, evals, info)
 !*******************************************************************
 !* LAPACK wrapper for symmetric matrix diagonalization
 !*
@@ -234,50 +314,50 @@ subroutine diagonalize_matrix(n, A, evals, info)
 !* A is overwritten by eigenvectors
 !*******************************************************************
 
-   implicit none
+      implicit none
 
-   integer, intent(in)    :: n
-   real(wp), intent(inout) :: A(n,n)
-   real(wp), intent(out)  :: evals(n)
-   integer, intent(out)   :: info
+      integer, intent(in)    :: n
+      real(wp), intent(inout) :: A(n, n)
+      real(wp), intent(out)  :: evals(n)
+      integer, intent(out)   :: info
 
-   real(wp), allocatable :: work(:), workspace
-   integer, allocatable   :: iwork(:)
+      real(wp), allocatable :: work(:), workspace
+      integer, allocatable   :: iwork(:)
 
-   integer :: lwork, liwork
+      integer :: lwork, liwork
 
-   external :: dsyevd
+      external :: dsyevd
 
-   !---------------------------------------------------------------
-   ! Query optimal workspace
-   !---------------------------------------------------------------
-   lwork  = -1
-   liwork = -1
+      !---------------------------------------------------------------
+      ! Query optimal workspace
+      !---------------------------------------------------------------
+      lwork = -1
+      liwork = -1
 
-   allocate(work(1), iwork(1))
+      allocate (work(1), iwork(1))
 
-   call dsyevd('V','U', n, A, n, evals, work, lwork, iwork, liwork, info)
+      call dsyevd('V', 'U', n, A, n, evals, work, lwork, iwork, liwork, info)
 
-   if (info /= 0) then
-      print *, "Workspace query failed, info=", info
-      return
-   end if
+      if (info /= 0) then
+         print *, "Workspace query failed, info=", info
+         return
+      end if
 
-   ! optimal sizes returned in work(1), iwork(1)
-   lwork  = int(work(1))
-   liwork = iwork(1)
+      ! optimal sizes returned in work(1), iwork(1)
+      lwork = int(work(1))
+      liwork = iwork(1)
 
-   deallocate(work, iwork)
+      deallocate (work, iwork)
 
-   allocate(work(lwork), iwork(liwork))
+      allocate (work(lwork), iwork(liwork))
 
-   !---------------------------------------------------------------
-   ! Actual diagonalization
-   !---------------------------------------------------------------
-   call dsyevd('V','U', n, A, n, evals, work, lwork, iwork, liwork, info)
+      !---------------------------------------------------------------
+      ! Actual diagonalization
+      !---------------------------------------------------------------
+      call dsyevd('V', 'U', n, A, n, evals, work, lwork, iwork, liwork, info)
 
-   deallocate(work, iwork)
+      deallocate (work, iwork)
 
-end subroutine diagonalize_matrix
- 
+   end subroutine diagonalize_matrix
+
 end module hr_utils

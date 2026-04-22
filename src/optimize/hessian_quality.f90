@@ -28,7 +28,7 @@ module hessian_quality
    implicit none
    private
    public :: step_monitor, monitor_init, monitor_add_step, monitor_should_freeze, &
-             mode_quality_analysis, selective_hessian_repair
+     mode_quality_analysis, selective_hessian_repair, selective_hessian_repair_v2
 
    !>────────────────────────────────────────────────────────────────────────────
    !> Incremental step monitor.
@@ -276,9 +276,9 @@ contains  !> MODULE PROCEDURES START HERE
 
       do i = 1, n_modes
 
-         if (eigenvalues(i) < 0.0001) cycle
+         ! if (eigenvalues(i) < 0.0001) cycle
 
-         if (quality(i) >= q_threshold) cycle   ! mode is fine, skip
+         if (quality(i) >= q_threshold .and. eigenvalues(i) > 0.0_wp) cycle   ! mode is fine, skip
 
          call mol_plus%copy(mol)
          call mol_minus%copy(mol)
@@ -317,6 +317,131 @@ contains  !> MODULE PROCEDURES START HERE
       call mol_minus%deallocate()
       deallocate (grad_plus, grad_minus, Hv, mode_3d)
    end subroutine selective_hessian_repair
+
+   subroutine selective_hessian_repair_v2(mol, calc, modes, eigenvalues, &
+                                       quality, n_modes, q_threshold, &
+                                       delta, n_repaired, rep_hess, pr)
+!*******************************************************************
+!* Selective Hessian repair using FD mode-wise Hessian reconstruction
+!*
+!* Updates selected Hessian columns in eigenvector basis and rebuilds
+!* full Cartesian Hessian at the end.
+!*
+!* pr = .true. enables verbose printing
+!*******************************************************************
+
+   type(coord), intent(in)       :: mol
+   type(calcdata), intent(inout) :: calc
+
+   real(wp), intent(in)          :: modes(:, :)      ! (n3, n_modes)
+   real(wp), intent(inout)       :: eigenvalues(:)   ! (n_modes)
+   real(wp), intent(in)          :: quality(:)       ! (n_modes)
+
+   integer, intent(in)           :: n_modes
+   real(wp), intent(in)          :: q_threshold
+   real(wp), intent(in)          :: delta
+
+   integer, intent(out)          :: n_repaired
+   real(wp), intent(out)         :: rep_hess(:, :)
+
+   logical, intent(in)           :: pr
+
+   type(coord) :: mol_plus, mol_minus
+   real(wp), allocatable :: grad_plus(:, :), grad_minus(:, :)
+   real(wp), allocatable :: Hv(:), mode_3d(:, :), temp_hess(:,:)
+
+   real(wp) :: e_plus, e_minus, lambda_old
+   integer  :: i, a, stat, nat, n3
+
+   nat = mol%nat
+   n3  = 3 * nat
+   n_repaired = 0
+
+   allocate(grad_plus(3, nat), grad_minus(3, nat))
+   allocate(Hv(n3), mode_3d(3, nat), temp_hess(n3, n3))
+
+   temp_hess = 0.0_wp
+
+   !-------------------------------------------------------------------
+   ! initialise diagonal with original eigenvalues
+   !-------------------------------------------------------------------
+   do i = 1, n3
+      temp_hess(i,i) = eigenvalues(i)
+   end do
+
+   if (pr) then
+      write(stdout,'(/,a)') '=============================================='
+      write(stdout,'(a)')   ' Selective Hessian Repair'
+      write(stdout,'(a)')   '=============================================='
+      write(stdout,'(a,f8.4)') ' Quality threshold : ', q_threshold
+      write(stdout,'(a,es12.4)') ' FD displacement   : ', delta
+      write(stdout,'(a,i6)') ' Number of modes   : ', n_modes
+      write(stdout,'(a)')   '----------------------------------------------'
+   end if
+
+   !-------------------------------------------------------------------
+   ! loop over selected modes
+   !-------------------------------------------------------------------
+   do i = n_modes-5, n_modes
+      cycle
+
+      ! if (quality(i) >= q_threshold .and. eigenvalues(i)>0.0_wp) cycle
+
+      ! if (eigenvalues(i) < 0.001_wp .and. eigenvalues(i)>-0.001_wp) cycle
+
+      n_repaired = n_repaired + 1
+      lambda_old = eigenvalues(i)
+
+      call mol_plus%copy(mol)
+      call mol_minus%copy(mol)
+
+      ! reshape eigenvector to Cartesian displacement
+      mode_3d = reshape(modes(:, i), [3, nat])
+
+      ! forward step
+      mol_plus%xyz  = mol%xyz + delta * mode_3d
+      call engrad(mol_plus, calc, e_plus, grad_plus, stat)
+
+      ! backward step
+      mol_minus%xyz = mol%xyz - delta * mode_3d
+      call engrad(mol_minus, calc, e_minus, grad_minus, stat)
+
+      ! Hessian-vector product
+      Hv = reshape(grad_plus - grad_minus, [n3]) / (2.0_wp * delta)
+
+      ! projection into eigenbasis of reference Hessian
+      temp_hess(:, i) = matmul(transpose(modes), Hv)
+
+      if (pr) then
+         write(stdout,'(a,i5,2x,a,f8.4,2x,a,es12.4,2x,a,es12.4)') &
+            ' Mode ', i, &
+            ' qual=', quality(i), &
+            ' λ_old=', lambda_old, &
+            ' λ_new≈col update'
+      end if
+
+   end do
+
+   !-------------------------------------------------------------------
+   ! symmetrize reconstructed Hessian
+   !-------------------------------------------------------------------
+   temp_hess = 0.5_wp * (temp_hess + transpose(temp_hess))
+
+   ! back-transform to Cartesian representation
+   rep_hess = matmul(modes, matmul(temp_hess, transpose(modes)))
+
+   if (pr) then
+      write(stdout,'(a)') '----------------------------------------------'
+      write(stdout,'(a,i6,a,i6)') ' Repaired modes: ', n_repaired, ' / ', n_modes
+      write(stdout,'(a,i6)') ' FD evaluations : ', 2 * n_repaired
+      write(stdout,'(a)') '=============================================='
+   end if
+
+   call mol_plus%deallocate()
+   call mol_minus%deallocate()
+   deallocate(grad_plus, grad_minus, Hv, mode_3d, temp_hess)
+
+end subroutine selective_hessian_repair_v2
 
 ! ══════════════════════════════════════════════════════════════════════════════
 end module hessian_quality

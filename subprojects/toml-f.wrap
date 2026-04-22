@@ -1,7 +1,0 @@
-[wrap-git]
-url = https://github.com/toml-f/toml-f
-revision = head
-clone-recursive = true
-
-[provide]
-toml-f = tomlf_dep

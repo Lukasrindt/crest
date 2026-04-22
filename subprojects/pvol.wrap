@@ -1,7 +1,0 @@
-[wrap-git]
-url = https://github.com/pprcht/libpvol.git
-revision = build-update
-clone-recursive = true
-
-[provide]
-libpvol = libpvol_dep

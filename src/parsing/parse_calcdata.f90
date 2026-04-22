@@ -575,6 +575,9 @@ contains !> MODULE PROCEDURES START HERE
     case ('chess_id_guess')
       calc%chess_id_guess = kv%value_f
 
+    case ('cos_thresh')
+      calc%cos_thresh = kv%value_f
+
 !>--- integers
     case ('maxcycle')
       calc%maxcycle = kv%value_i  !> optimization max cycles
@@ -726,9 +729,15 @@ contains !> MODULE PROCEDURES START HERE
       case ('schlegel')
         calc%hr_hu_type = 4
       case ('ms_bfgs')
-        calc%hr_hu_type = 5 
+        calc%hr_hu_type = 5
       case ('ms_psb')
         calc%hr_hu_type = 6
+      case ('ms_bfgs_pol')
+        calc%hr_hu_type = 7
+      case ('ms_rsr')
+        calc%hr_hu_type = 8
+      case ('ms_rsr_pol')
+        calc%hr_hu_type = 9
       case default
         !>--- keyword was recognized, but invalid argument supplied
         write (stdout,fmtura) kv%value_c
