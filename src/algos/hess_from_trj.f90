@@ -47,11 +47,10 @@ subroutine hess_from_trj(env, tim)
    real(wp), allocatable :: grad(:, :), geo(:, :), csv(:, :), q(:)
    type(coord), allocatable :: structures(:)
    type(coord) :: init_mol
-   integer :: nall, steps, nstruc,nat3, n_repaired
+   integer :: nall, steps, nstruc, nat3, n_repaired
    real(wp) :: etot
    logical, allocatable :: list(:)
-   real(wp), allocatable :: hess(:,:), freqs(:), quality(:), final_hess(:,:), init_hess(:,:), init_eigenvalues(:)
-   
+   real(wp), allocatable :: hess(:, :), freqs(:), quality(:), final_hess(:, :), init_hess(:, :), init_eigenvalues(:)
 
 !========================================================================================!
    call tim%start(14, 'Test implementation')
@@ -93,41 +92,46 @@ subroutine hess_from_trj(env, tim)
       end if
    end do
 
-   idx = minloc(env%calc%chess%order, 1)
-   if (minval(env%calc%chess%order) .eq. 0) idx = 1
+   ! if (nstruc > 1) then
+      idx = minloc(env%calc%chess%order, 1)
+      if (minval(env%calc%chess%order) .eq. 0) idx = 1
+   ! else
+   !    idx = nall
+   ! end if
+   write(*,*) nstruc, idx
 
    init_mol = structures(idx)
    call initialize_hessian(env%calc, env%calc%chess%initialize_type, env%calc%chess%coords(idx, :, :), &
      & init_mol%nat, init_mol%at, env%calc%chess%hess(:), env%calc%chess%hguess, pr)
-   allocate(init_hess(nat3,nat3))
-   call env%calc%chess%construct_hessian()
-  
-   call dhtosq(nat3,init_hess,env%calc%chess%hess)
+   allocate (init_hess(nat3, nat3))
+   if (nstruc > 1) call env%calc%chess%construct_hessian()
+   if (nstruc == 1) call dhtosq(nat3, env%calc%chess%H,env%calc%chess%hess)
+   ! call dhtosq(nat3,init_hess,env%calc%chess%hess)
 
-  call prj_hess(structures(nall)%nat, nat3, structures(nall)%xyz, env%calc%chess%H)
-  allocate(freqs(nat3), final_hess(nat3,nat3))
-  call diagonalize_matrix(nat3, env%calc%chess%H,freqs,info)
+   ! call prj_hess(structures(nall)%nat, nat3, structures(nall)%xyz, env%calc%chess%H)
+   ! allocate(freqs(nat3), final_hess(nat3,nat3))
+   ! call diagonalize_matrix(nat3, env%calc%chess%H,freqs,info)
 
-   allocate(hess(nat3,nat3))
-   hess = env%calc%chess%H !Will store modes
-   allocate(quality(nat3))
+   ! allocate(hess(nat3,nat3))
+   ! hess = env%calc%chess%H !Will store modes
+   ! allocate(quality(nat3))
 
-  allocate(init_eigenvalues(nat3))
-  call prj_hess(structures(idx)%nat, nat3, structures(idx)%xyz, init_hess)
-  call diagonalize_matrix(nat3, init_hess,init_eigenvalues, info)
+   ! allocate(init_eigenvalues(nat3))
+   ! call prj_hess(structures(idx)%nat, nat3, structures(idx)%xyz, init_hess)
+   ! call diagonalize_matrix(nat3, init_hess,init_eigenvalues, info)
 
-   call env%calc%chess%mode_quality_analysis(1,init_hess,hess,nat3,quality)
+   ! call env%calc%chess%mode_quality_analysis(1,init_hess,hess,nat3,quality)
    ! quality = 0.000000001_wp
    ! quality(1:20) = 0.00001
    pr = .true.
-   call selective_hessian_repair_v2(structures(nall),env%calc,hess,freqs,quality,nat3,0.2_wp,0.005_wp,n_repaired, final_hess,pr)
-  !
+   ! call selective_hessian_repair_v2(structures(nall),env%calc,hess,freqs,quality,nat3,0.2_wp,0.005_wp,n_repaired, final_hess,pr)
+   !
    etot = structures(nall)%energy
-  !  call calcthermo_from_modes(structures(nall),&
-  !    & freqs, pr, env%calc%ithr, env%calc%fscal, env%calc%sthr, env%calc%nt, env%calc%temperatures, &
-  !    & env%calc%et, env%calc%ht, env%calc%gt, env%calc%stot, etot, emodel=env%calc%emodel)
+   !  call calcthermo_from_modes(structures(nall),&
+   !    & freqs, pr, env%calc%ithr, env%calc%fscal, env%calc%sthr, env%calc%nt, env%calc%temperatures, &
+   !    & env%calc%et, env%calc%ht, env%calc%gt, env%calc%stot, etot, emodel=env%calc%emodel)
 
-   call calc_thermo_from_hess(structures(nall), final_hess, pr, &
+   call calc_thermo_from_hess(structures(nall), env%calc%chess%H, pr, &
    & env%calc%nt, env%calc%temperatures, env%calc%ithr, env%calc%fscal, env%calc%sthr, env%calc%et, &
    & env%calc%ht, env%calc%gt, env%calc%stot, etot, env%calc%emodel)
 !========================================================================================!

@@ -68,16 +68,14 @@ contains  !> MODULE PROCEDURES STARTE HERE
          else
             freq(i) = -sqrt(abs(freq(i)))*autorcm
          end if
-         if (freq(i) > 4000.0_wp) freq(i) = 4000.0_wp
-         if (freq(i) < -4000.0_wp) freq(i) = -4000.0_wp
       end do
 
-      ! open (newunit=unit,file="frequencies")
-      write (stdout,*) "Frequencies:"
+      open (newunit=unit,file="frequencies")
+      write (unit,*) "Frequencies:"
       do i = 1,size(freq)
-       write (stdout,*) freq(i)
+       write (unit,*) freq(i)
       end do
-      ! close (unit)
+      close (unit)
 
       return
 

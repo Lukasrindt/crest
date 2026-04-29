@@ -165,7 +165,7 @@ contains
       integer, intent(inout) :: nstruc
       logical, intent(inout):: list(:)
       type(coord), intent(in) :: structures(:)
-      integer :: i, last, nat3, k, j
+      integer :: i, last, nat3, k, j, case
       real(wp), allocatable :: prob(:), r(:)
       real(wp) :: rmsdval
       integer :: n, m
@@ -174,10 +174,11 @@ contains
       real(wp) :: norm_s(nall - 1), sy(nall - 1), ci(nall - 1)
 
       real(wp) :: cos_ij, max_cos
-      real(wp) :: c_best
+      real(wp) :: c_best, norm_1, norm_2
 
       real(wp), parameter :: eps = 1d-14
 
+      case =1
 
       nat3 = structures(1)%nat*3
       n = nat3
@@ -193,78 +194,107 @@ contains
       !-------------------------------------------------------
       ! STEP 1: build secants
       !-------------------------------------------------------
-      allocate(S(nat3,nall-1),Y(nat3,nall-1))
-      do i = 1, nall - 1
-         S(:, i) = reshape(structures(nall)%xyz - structures(i)%xyz, [nat3])
-         Y(:, i) = reshape(structures(nall)%gradient - structures(i)%gradient, [nat3])
-      end do
-
-      m = nall
-
-      !-------------------------------------------------------
-      ! STEP 2: basic curvature screening
-      !-------------------------------------------------------
-      c_best = 0d0
-
-      do k = 1, m - 1
-
-         norm_s(k) = sqrt(dot_product(S(:, k), S(:, k)))
-         sy(k) = dot_product(S(:, k), Y(:, k))
-
-         if (norm_s(k) < eps) then
-            list(k) = .false.
-            cycle
-         end if
-
-         if (sy(k) <= 1d-10*norm_s(k)**2) then
-            list(k) = .false.
-            cycle
-         end if
-
-         ci(k) = sy(k)/(norm_s(k)**2 + eps)
-
-         if (ci(k) > c_best) c_best = ci(k)
-
-         list(k) = .true.
-
-      end do
-      write(*,*) "List after first filter:", list
-      !-------------------------------------------------------
-      ! STEP 3: greedy geometric filtering
-      !-------------------------------------------------------
-
-      do k = 1, m - 1
-
-         if (.not. list(k)) cycle
-
-         max_cos = 0d0
-
-         do i = 1, k - 1
-            if (.not. list(i)) cycle
-
-            cos_ij = dot_product(S(:, i), S(:, k))/ &
-                     (sqrt(dot_product(S(:, i), S(:, i)))* &
-                      sqrt(dot_product(S(:, k), S(:, k))) + eps)
-
-            if (abs(cos_ij) > max_cos) max_cos = abs(cos_ij)
+      if (case == 1) then
+         allocate (S(nat3, nall - 1), Y(nat3, nall - 1))
+         do i = 1, nall - 1
+            S(:, i) = reshape(structures(nall)%xyz - structures(i)%xyz, [nat3])
+            Y(:, i) = reshape(structures(nall)%gradient - structures(i)%gradient, [nat3])
          end do
 
-         ! reject nearly collinear directions
-         if (max_cos > cos_thresh) then
-            list(k) = .false.
-            cycle
-         end if
+         m = nall
 
-         ! reject very low-curvature additions (information saturation)
-         ! if (ci(k) < 0.2d0*c_best .and. max_cos > 0.85d0) then
-         !    list(k) = .false.
-         !    cycle
+         !-------------------------------------------------------
+         ! STEP 2: basic curvature screening
+         !-------------------------------------------------------
+         c_best = 0d0
+
+         do k = 1, m - 1
+
+            norm_s(k) = sqrt(dot_product(S(:, k), S(:, k)))
+            sy(k) = dot_product(S(:, k), Y(:, k))
+
+            ! if (norm_s(k) < eps) then
+            !    list(k) = .false.
+            !    cycle
+            ! end if
+
+            if (sy(k) <= 1d-10) then
+               list(k) = .false.
+               cycle
+            end if
+
+            ! norm_1 = norm2(S(:, k))
+            ! norm_2 = norm2(Y(:, k))
+            ! write (*, *) norm_2/norm_1
+            ! if (norm_2/norm_1 < 0.001_wp) then
+            !    list(k) = .false.
+            !    cycle
+            ! end if
+
+            ci(k) = sy(k)/(norm_s(k)**2 + eps)
+
+            if (ci(k) > c_best) c_best = ci(k)
+
+            list(k) = .true.
+
+         end do
+         write (*, *) "List after first filter:", list
+         !-------------------------------------------------------
+         ! STEP 3: greedy geometric filtering
+         !-------------------------------------------------------
+
+         do k = 1, m - 1
+
+            if (.not. list(k)) cycle
+
+            max_cos = 0d0
+
+            do i = 1, k - 1
+               if (.not. list(i)) cycle
+
+               cos_ij = dot_product(S(:, i), S(:, k))/ &
+                        (sqrt(dot_product(S(:, i), S(:, i)))* &
+                         sqrt(dot_product(S(:, k), S(:, k))) + eps)
+
+               if (abs(cos_ij) > max_cos) max_cos = abs(cos_ij)
+            end do
+
+            ! reject nearly collinear directions
+            if (max_cos > cos_thresh) then
+               list(k) = .false.
+               cycle
+            end if
+
+         end do
+      else
+         ! allocate (S(nat3, nall - 1), Y(nat3, nall - 1))
+         ! do i = 1, nall - 1
+         !    S(:, i) = reshape(structures(nall)%xyz - structures(i)%xyz, [nat3])
+         !    Y(:, i) = reshape(structures(nall)%gradient - structures(i)%gradient, [nat3])
+         ! end do
+         ! do i = 1, nall - 1
+         !    norm_1 = norm2(S(:, i))
+         !    norm_2 = norm2(Y(:, i))
+         !    write (*, *) norm_2/norm_1
+         !    if (norm_2/norm_1 > cos_thresh) list(i) = .true.
+         ! end do
+         ! list(nall) = .true.
+         ! nstruc = 0
+         ! if (nint(cos_thresh*n) > 0) nstruc = max(nint(cos_thresh*n), 5)
+         ! write (*, *) nstruc
+         ! nstruc = min(nall, nstruc)
+         ! write (*, *) "NSTRUC:", nstruc
+         ! if (nstruc > 0) then
+         !    list(1:nstruc) = .true.
+         !    list(nall) = .true.
+         ! else
+         !    list(:) = .false.
+         !    list(nall) = .true.
          ! end if
-
-      end do
+      end if
 
       nstruc = count(list)
-      write(*,*) "Accepted Structures List:", list
+      write (*, *) "Accepted Structures List:", list
    end subroutine generate_chess_list
 
    subroutine prj_hess(nat, nat3, xyz, hess, phess_ut)

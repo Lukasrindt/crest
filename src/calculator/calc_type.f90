@@ -310,7 +310,7 @@ module calc_type
     logical :: g_sampling = .false. !>Do sampling on free energy surface as approximated using the lindh95 hessian
     integer :: gs_hess_type = 5
     integer :: chess_space = 2 !> Spacing in between structures considered for reconstruction
-    real(wp) :: cos_thresh = 0.92 !> Maximum cosine similarity for a secant to get accepted
+    real(wp) :: cos_thresh = 0.94 !> Maximum cosine similarity for a secant to get accepted
 
 !>--- Parameters for smooth function within optimizer
     real(wp) :: L = 1.50_wp

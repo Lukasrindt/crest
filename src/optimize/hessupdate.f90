@@ -560,11 +560,16 @@ contains  !> MODULE PROCEDURES START HERE
       real(wp) :: X(q, n)
       real(wp) :: BS(n, q)
       real(wp) :: term1(n, n), term2(n, n)
+      real(wp) :: lambda
 
       !-----------------------------------------
       ! Y^T S
       !-----------------------------------------
       YtS = matmul(transpose(Y), S)
+        lambda = 1d-7
+      do i=1,q
+        YtS(i,i) = YtS(i,i) + lambda
+      enddo 
 
       !-----------------------------------------
       ! Solve (Y^T S) X = Y^T
@@ -584,6 +589,10 @@ contains  !> MODULE PROCEDURES START HERE
       ! S^T B S
       !-----------------------------------------
       StBS = matmul(transpose(S), BS)
+      do i=1,q
+        StBS(i,i) = StBS(i,i) + lambda
+      enddo 
+
 
       !-----------------------------------------
       ! Solve (S^T B S) X = (B S)^T
@@ -604,132 +613,142 @@ contains  !> MODULE PROCEDURES START HERE
    end subroutine ms_bfgs_update
 
    subroutine ms_bfgs_polar_regularized(n, q, B, S, Y)
-   implicit none
-   integer, intent(in) :: n, q
-   real(8), intent(inout) :: B(n, n)
-   real(8), intent(in) :: S(n, q), Y(n, q)
+      implicit none
+      integer, intent(in) :: n, q
+      real(8), intent(inout) :: B(n, n)
+      real(8), intent(in) :: S(n, q), Y(n, q)
 
-   real(8) :: YtS(q, q), StBS(q, q)
-   real(8) :: BS(n, q)
-   real(8) :: term1(n, n), term2(n, n)
+      real(8) :: YtS(q, q), StBS(q, q)
+      real(8) :: BS(n, q)
+      real(8) :: term1(n, n), term2(n, n)
 
-   real(8) :: RHS(q, n), X(q, n)
+      real(8) :: RHS(q, n), X(q, n)
 
-   ! polar inverse machinery
-   real(8) :: AtA(q, q)
-   real(8) :: eigvec(q, q), eigval(q)
-   real(8) :: Hinv(q, q)
+      ! polar inverse machinery
+      real(8) :: AtA(q, q)
+      real(8) :: eigvec(q, q), eigval(q)
+      real(8) :: Hinv(q, q)
 
-   integer :: i, j, k, info, lwork
-   real(8), allocatable :: work(:)
-   real(8) :: tau
+      integer :: i, j, k, info, lwork
+      real(8), allocatable :: work(:)
+      real(8) :: tau, lambda
 
-   tau = 1d-12
+      tau = 1d-10
 
-   !=========================================================
-   ! TERM 1: Y (Y^T S)^{-1} Y^T  via polar inverse
-   !=========================================================
+      !=========================================================
+      ! TERM 1: Y (Y^T S)^{-1} Y^T  via polar inverse
+      !=========================================================
 
-   YtS = matmul(transpose(Y), S)
+      YtS = matmul(transpose(Y), S)
 
-   ! Build AtA = (Y^T S)^T (Y^T S)
-   AtA = matmul(transpose(YtS), YtS)
+      ! Build AtA = (Y^T S)^T (Y^T S)
+      AtA = matmul(transpose(YtS), YtS)
 
-   ! Eigen-decomposition of AtA
-   eigvec = AtA
+      lambda = 1d-7
 
-   lwork = -1
-   allocate(work(1))
-   call dsyev('V','U', q, eigvec, q, eigval, work, lwork, info)
-   lwork = int(work(1))
-   deallocate(work)
-   allocate(work(lwork))
+      do i = 1, q
+         AtA(i, i) = AtA(i, i) + lambda
+      end do
 
-   call dsyev('V','U', q, eigvec, q, eigval, work, lwork, info)
-   deallocate(work)
+      ! Eigen-decomposition of AtA
+      eigvec = AtA
 
-   if (info /= 0) stop "DSYEV failed (YtS)"
+      lwork = -1
+      allocate (work(1))
+      call dsyev('V', 'U', q, eigvec, q, eigval, work, lwork, info)
+      lwork = int(work(1))
+      deallocate (work)
+      allocate (work(lwork))
 
-   ! Build H^{-1} = (AtA)^(-1/2)
-   do i = 1, q
-      if (eigval(i) > tau) then
-         eigval(i) = 1d0 / sqrt(eigval(i))
-      else
-         eigval(i) = 0d0
-      end if
-   end do
+      call dsyev('V', 'U', q, eigvec, q, eigval, work, lwork, info)
+      deallocate (work)
 
-   Hinv = 0d0
-   do i = 1, q
-      do j = 1, q
-         do k = 1, q
-            Hinv(i,j) = Hinv(i,j) + eigvec(i,k)*eigval(k)*eigvec(j,k)
+      if (info /= 0) stop "DSYEV failed (YtS)"
+
+      ! Build H^{-1} = (AtA)^(-1/2)
+      do i = 1, q
+         ! if (eigval(i) > tau) then
+            eigval(i) = 1d0/sqrt(eigval(i))
+         ! else
+         !    eigval(i) = 0d0
+         ! end if
+      end do
+
+      Hinv = 0d0
+      do i = 1, q
+         do j = 1, q
+            do k = 1, q
+               Hinv(i, j) = Hinv(i, j) + eigvec(i, k)*eigval(k)*eigvec(j, k)
+            end do
          end do
       end do
-   end do
 
-   ! X = Hinv * Y^T
-   RHS = transpose(Y)
-   X = matmul(Hinv, RHS)
+      ! X = Hinv * Y^T
+      RHS = transpose(Y)
+      X = matmul(Hinv, RHS)
 
-   term1 = matmul(Y, X)
+      term1 = matmul(Y, X)
 
-   !=========================================================
-   ! TERM 2: B S (S^T B S)^{-1} (B S)^T via polar inverse
-   !=========================================================
+      !=========================================================
+      ! TERM 2: B S (S^T B S)^{-1} (B S)^T via polar inverse
+      !=========================================================
 
-   BS = matmul(B, S)
+      BS = matmul(B, S)
 
-   StBS = matmul(transpose(S), BS)
+      StBS = matmul(transpose(S), BS)
 
-   ! Build AtA = (S^T B S)^T (S^T B S)
-   AtA = matmul(transpose(StBS), StBS)
+      ! Build AtA = (S^T B S)^T (S^T B S)
+      AtA = matmul(transpose(StBS), StBS)
 
-   eigvec = AtA
+      do i = 1, q
+         AtA(i, i) = AtA(i, i) + lambda
+      end do
 
-   lwork = -1
-   allocate(work(1))
-   call dsyev('V','U', q, eigvec, q, eigval, work, lwork, info)
-   lwork = int(work(1))
-   deallocate(work)
-   allocate(work(lwork))
+      eigvec = AtA
 
-   call dsyev('V','U', q, eigvec, q, eigval, work, lwork, info)
-   deallocate(work)
+      lwork = -1
+      allocate (work(1))
+      call dsyev('V', 'U', q, eigvec, q, eigval, work, lwork, info)
+      lwork = int(work(1))
+      deallocate (work)
+      allocate (work(lwork))
 
-   if (info /= 0) stop "DSYEV failed (StBS)"
+      call dsyev('V', 'U', q, eigvec, q, eigval, work, lwork, info)
+      deallocate (work)
 
-   do i = 1, q
-      if (eigval(i) > tau) then
-         eigval(i) = 1d0 / sqrt(eigval(i))
-      else
-         eigval(i) = 0d0
-      end if
-   end do
+      if (info /= 0) stop "DSYEV failed (StBS)"
 
-   Hinv = 0d0
-   do i = 1, q
-      do j = 1, q
-         do k = 1, q
-            Hinv(i,j) = Hinv(i,j) + eigvec(i,k)*eigval(k)*eigvec(j,k)
+      do i = 1, q
+         ! if (eigval(i) > tau) then
+            eigval(i) = 1d0/sqrt(eigval(i))
+         ! else
+         !    eigval(i) = 0d0
+         ! end if
+      end do
+
+      Hinv = 0d0
+      do i = 1, q
+         do j = 1, q
+            do k = 1, q
+               Hinv(i, j) = Hinv(i, j) + eigvec(i, k)*eigval(k)*eigvec(j, k)
+            end do
          end do
       end do
-   end do
 
-   RHS = transpose(BS)
-   X = matmul(Hinv, RHS)
+      RHS = transpose(BS)
+      X = matmul(Hinv, RHS)
 
-   term2 = matmul(BS, X)
+      term2 = matmul(BS, X)
 
-   !=========================================================
-   ! FINAL UPDATE
-   !=========================================================
+      !=========================================================
+      ! FINAL UPDATE
+      !=========================================================
 
-   B = B + term1 - term2
+      B = B + term1 - term2
 
-   call symmetrize(n, B)
+      call symmetrize(n, B)
 
-end subroutine ms_bfgs_polar_regularized
+   end subroutine ms_bfgs_polar_regularized
 
    !===========================================================
 ! MULTISECANT PSB UPDATE (INVERSE-FREE)
@@ -756,7 +775,7 @@ end subroutine ms_bfgs_polar_regularized
       real(wp) :: SX1(n, n), SX2(n, n)
       real(wp) :: I(q, q), lamda, eps, trace
       integer :: k
-      real(wp) :: dmin, dmax
+      real(wp) :: dmin, dmax, lambda
 
       real(wp), external :: cond
 
@@ -769,26 +788,12 @@ end subroutine ms_bfgs_polar_regularized
       !-----------------------------------------
       ! S^T S
       !-----------------------------------------
-      ! I = 0.0_wp
-      ! do k = 1, q
-      !    I(k, k) = 1.0_wp
-      ! end do
-      !
-      ! eps = 0.000001_wp
       StS = matmul(transpose(S), S)
-      ! write(*,*) cond(StS)
-!   dmin = minval([(StS(k,k), k=1,q)])
-! dmax = maxval([(StS(k,k), k=1,q)])
-!
-! print *, "diag ratio ~", dmax / dmin
-      ! trace = 0.0_wp
-      ! do k=1,q
-      !   trace = trace + StS(k,k)
-      ! enddo
-      !
-      ! lamda = eps * trace/q
-      ! StS = StS + lamda*I
-
+  
+      lambda = 1d-7
+      do k=1,q
+        StS(k,k) = StS(k,k) + lambda
+      enddo 
       !-----------------------------------------
       ! Solve (S^T S) X = R^T
       !-----------------------------------------
@@ -819,7 +824,7 @@ end subroutine ms_bfgs_polar_regularized
 
    end subroutine ms_psb_update
 
-     subroutine ms_rsr_polar_update(n, q, B, S, Y)
+   subroutine ms_rsr_polar_update(n, q, B, S, Y)
       implicit none
       integer, intent(in) :: n, q
       real(8), intent(inout) :: B(n, n)
@@ -833,7 +838,7 @@ end subroutine ms_bfgs_polar_regularized
 
       integer :: i, j, info, lwork
       real(8), allocatable :: work(:)
-      real(8) :: tau
+      real(8) :: tau, lambda
 
       !-----------------------------------------
       ! Step 1: A = Y - B S
@@ -850,6 +855,12 @@ end subroutine ms_bfgs_polar_regularized
       ! Step 3: MtM = M^T M
       !-----------------------------------------
       MtM = matmul(transpose(M), M)
+
+      lambda = 3.16d-4
+
+      do i = 1, q
+         MtM(i, i) = MtM(i, i) + lambda
+      end do
 
       !-----------------------------------------
       ! Step 4: eigen-decomposition MtM
@@ -871,14 +882,8 @@ end subroutine ms_bfgs_polar_regularized
       !-----------------------------------------
       ! Step 5: build H^{-1} = (MtM)^(-1/2)
       !-----------------------------------------
-      tau = 1d-10
-
       do i = 1, q
-         if (eigval(i) > tau) then
             eigval(i) = 1d0/sqrt(eigval(i))
-         else
-            eigval(i) = 0d0
-         end if
       end do
 
       Hinv = 0d0
@@ -899,7 +904,7 @@ end subroutine ms_bfgs_polar_regularized
 
    end subroutine
 
-   subroutine ms_rsr_inverse_update(n, q, B, S, Y)
+      subroutine ms_rsr_inverse_update(n, q, B, S, Y)
 
       implicit none
       integer, intent(in) :: n, q
@@ -914,7 +919,7 @@ end subroutine ms_bfgs_polar_regularized
 
       integer :: i, j, k, info, lwork
       real(8), allocatable :: work(:)
-      real(8) :: tau
+      real(8) :: tau, lambda
 
       !-----------------------------------------
       ! Step 1: A = Y - B S
@@ -937,6 +942,12 @@ end subroutine ms_bfgs_polar_regularized
          end do
       end do
 
+      lambda = 1d-7
+
+      do i=1,q
+        M(i,i) = M(i,i) + lambda
+      enddo 
+
       !-----------------------------------------
       ! Step 4: eigen-decomposition of M
       !-----------------------------------------
@@ -957,10 +968,10 @@ end subroutine ms_bfgs_polar_regularized
       !-----------------------------------------
       ! Step 5: build pseudo-inverse of M
       !-----------------------------------------
-      tau = 1d-8
+      ! tau = 1d-10
 
       do i = 1, q
-         if (abs(eigval(i)) > tau) then
+         if ((eigval(i)) > 0) then
             eigval(i) = 1d0/eigval(i)
          else
             eigval(i) = 0d0

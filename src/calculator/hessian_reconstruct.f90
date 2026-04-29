@@ -145,9 +145,13 @@ contains
          allocate (Y(nat3, self%steps - 1)) ! SHould be refactored to come from length of coord vector?
 
          do i = 1, self%steps-1
-            S(:, i) = reshape(self%coords(self%steps, :, :) - self%coords(i-1, :, :), [nat3])
-            Y(:, i) = reshape(self%gradient(self%steps, :, :) - self%gradient(i-1, :, :), [nat3])
+            S(:, i) = reshape(self%coords(self%steps, :, :) - self%coords(i, :, :), [nat3])
+            Y(:, i) = reshape(self%gradient(self%steps, :, :) - self%gradient(i, :, :), [nat3])
          end do
+         ! do i = 2, self%steps
+         !    S(:, i-1) = reshape(self%coords(i, :, :) - self%coords(i-1, :, :), [nat3])
+         !    Y(:, i-1) = reshape(self%gradient(i, :, :) - self%gradient(i-1, :, :), [nat3])
+         ! end do
          self%S = S
          self%Y = Y
          ! write (*, *) self%Y
