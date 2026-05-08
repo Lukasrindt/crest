@@ -93,14 +93,14 @@ subroutine hess_from_trj(env, tim)
    end do
 
    ! if (nstruc > 1) then
-      idx = minloc(env%calc%chess%order, 1)
-      if (minval(env%calc%chess%order) .eq. 0) idx = 1
+      idx = maxloc(env%calc%chess%order, 1)
+      ! if (minval(env%calc%chess%order) .eq. 0) idx = 1
    ! else
    !    idx = nall
    ! end if
    write(*,*) nstruc, idx
 
-   init_mol = structures(idx)
+   init_mol = structures(nall)
    call initialize_hessian(env%calc, env%calc%chess%initialize_type, env%calc%chess%coords(idx, :, :), &
      & init_mol%nat, init_mol%at, env%calc%chess%hess(:), env%calc%chess%hguess, pr)
    allocate (init_hess(nat3, nat3))

@@ -72,28 +72,28 @@ contains
          call newcalc%add(clevel)
          !$omp end critical
          call numhess1(nat, at, xyz, newcalc, hess_full(:, :), io)
-         call dsqtoh(nat3, hess_full(:, :), hess(:)) !>Pack Hessian
+         ! call dsqtoh(nat3, hess_full(:, :), hess(:)) !>Pack Hessian
       case (2)
          !$omp critical
          call clevel%create('gfn0', chrg=calc%calcs(1)%chrg, uhf=calc%calcs(1)%uhf) !> Different levels?? and what happens to solvent??
          call newcalc%add(clevel)
          !$omp end critical
          call numhess1(nat, at, xyz, newcalc, hess_full(:, :), io)
-         call dsqtoh(nat3, hess_full(:, :), hess(:))
+         ! call dsqtoh(nat3, hess_full(:, :), hess(:))
       case (3)
          !$omp critical
          call clevel%create('gfn1', chrg=calc%calcs(1)%chrg, uhf=calc%calcs(1)%uhf) !> Different levels?? and what happens to solvent??
          call newcalc%add(clevel)
          !$omp end critical
          call numhess1(nat, at, xyz, newcalc, hess_full(:, :), io)
-         call dsqtoh(nat3, hess_full(:, :), hess(:))
+         ! call dsqtoh(nat3, hess_full(:, :), hess(:))
       case (4)
          !$omp critical
          call clevel%create('gfn2', chrg=calc%calcs(1)%chrg, uhf=calc%calcs(1)%uhf) !> Different levels?? and what happens to solvent??
          call newcalc%add(clevel)
          !$omp end critical
          call numhess1(nat, at, xyz, newcalc, hess_full(:, :), io)
-         call dsqtoh(nat3, hess_full(:, :), hess(:))
+         ! call dsqtoh(nat3, hess_full(:, :), hess(:))
       case (5)
          !$omp critical
          mhset%model = calc%mh_type
@@ -101,20 +101,116 @@ contains
          !$omp end critical
       end select
 
-      !call axis(nat,at,xyz,rot,dumi)
-      !linear = (rot(3) .lt. 1.d-10).or.(nat == 2)
-
-      !if (.not.linear) then
-      !    if (calc%nfreeze == 0) then
-      !      call trproj(nat,nat3,xyz,hess,.false.,0,pmode,1)  !> normal
-      !    else
-      !      call trproj(nat,nat3,xyz,hess,.false.,calc%freezelist) !> fozen atoms
-      !    end if
-      !end if
-
-      call force_positive_definiteness(hess, nat3)
+      ! call force_psd_eig(hess_full, nat3)
+      hess_full = 0.5*(hess_full + transpose(hess_full))
+      call dsqtoh(nat3, hess_full(:, :), hess(:))
+      ! call force_positive_definiteness(hess, nat3)
 
    end subroutine initialize_hessian
+
+   subroutine force_psd_svd(hess, nat3)
+      implicit none
+      integer, intent(in) :: nat3
+      real(wp), intent(inout) :: hess(nat3, nat3)
+
+      real(wp), allocatable :: U(:, :), VT(:, :), S(:)
+      real(wp), allocatable :: work(:)
+      integer :: lwork, info
+      integer :: i, j, l
+
+      ! SVD storage
+      allocate (U(nat3, nat3), VT(nat3, nat3), S(nat3))
+
+      ! --- workspace query ---
+      lwork = -1
+      allocate (work(1))
+      call dgesvd('A', 'A', nat3, nat3, hess, nat3, S, U, nat3, VT, nat3, work, lwork, info)
+      lwork = int(work(1))
+      deallocate (work)
+      allocate (work(lwork))
+
+      ! --- compute SVD: hess = U * diag(S) * VT ---
+      call dgesvd('A', 'A', nat3, nat3, hess, nat3, S, U, nat3, VT, nat3, work, lwork, info)
+
+      if (info /= 0) then
+         write (*, *) "SVD failed, info=", info
+         stop
+      end if
+
+      ! --- reconstruct PSD matrix: H_psd = V * S * V^T ---
+      ! Note: VT = V^T → V(i,l) = VT(l,i)
+
+      hess = 0.0_wp
+
+      do l = 1, nat3
+         do i = 1, nat3
+            do j = 1, nat3
+               hess(i, j) = hess(i, j) + S(l)*VT(l, i)*VT(l, j)
+            end do
+         end do
+      end do
+
+      deallocate (U, VT, S, work)
+
+   end subroutine force_psd_svd
+
+   subroutine force_psd_eig(hess, nat3)
+   implicit none
+   integer, intent(in) :: nat3
+   real(wp), intent(inout) :: hess(nat3, nat3)
+
+   real(wp), allocatable :: eigvec(:, :), eigval(:)
+   real(wp), allocatable :: work(:)
+   integer :: lwork, info
+   integer :: i, j, l
+
+   ! --- allocate ---
+   allocate(eigvec(nat3, nat3), eigval(nat3))
+
+   ! --- 1. symmetrize ---
+   hess = 0.5_wp * (hess + transpose(hess))
+
+   ! copy because dsyev overwrites input
+   eigvec = hess
+
+   ! --- workspace query ---
+   lwork = -1
+   allocate(work(1))
+   call dsyev('V', 'U', nat3, eigvec, nat3, eigval, work, lwork, info)
+   lwork = int(work(1))
+   deallocate(work)
+   allocate(work(lwork))
+
+   ! --- 2. diagonalize ---
+   call dsyev('V', 'U', nat3, eigvec, nat3, eigval, work, lwork, info)
+
+   if (info /= 0) then
+      write(*,*) "dsyev failed, info=", info
+      stop
+   end if
+
+   ! --- 3. flip negative eigenvalues ---
+   ! do i = 1, nat3
+   !    if (eigval(i) < 0.0_wp) eigval(i) = -eigval(i)
+   ! end do
+
+   do i = 1, nat3
+      if (eigval(i) < 0.0_wp) eigval(i) = 0
+   end do
+   ! --- 4. reconstruct H = Q Λ Q^T ---
+   hess = 0.0_wp
+
+   do l = 1, nat3
+      do i = 1, nat3
+         do j = 1, nat3
+            hess(i,j) = hess(i,j) + eigval(l) * eigvec(i,l) * eigvec(j,l)
+         end do
+      end do
+   end do
+
+   deallocate(eigvec, eigval, work)
+
+end subroutine force_psd_eig
 
    subroutine force_positive_definiteness(hess, nat3)
       real(wp), intent(inout) :: hess(:)
@@ -178,7 +274,7 @@ contains
 
       real(wp), parameter :: eps = 1d-14
 
-      case =1
+      case = 1
 
       nat3 = structures(1)%nat*3
       n = nat3
@@ -226,7 +322,7 @@ contains
             ! norm_1 = norm2(S(:, k))
             ! norm_2 = norm2(Y(:, k))
             ! write (*, *) norm_2/norm_1
-            ! if (norm_2/norm_1 < 0.001_wp) then
+            ! if (norm_2/norm_1 < 0.0016_wp) then
             !    list(k) = .false.
             !    cycle
             ! end if
@@ -267,25 +363,25 @@ contains
 
          end do
       else
-         ! allocate (S(nat3, nall - 1), Y(nat3, nall - 1))
-         ! do i = 1, nall - 1
-         !    S(:, i) = reshape(structures(nall)%xyz - structures(i)%xyz, [nat3])
-         !    Y(:, i) = reshape(structures(nall)%gradient - structures(i)%gradient, [nat3])
-         ! end do
-         ! do i = 1, nall - 1
-         !    norm_1 = norm2(S(:, i))
-         !    norm_2 = norm2(Y(:, i))
-         !    write (*, *) norm_2/norm_1
-         !    if (norm_2/norm_1 > cos_thresh) list(i) = .true.
-         ! end do
-         ! list(nall) = .true.
+         allocate (S(nat3, nall - 1), Y(nat3, nall - 1))
+         do i = 1, nall - 1
+            S(:, i) = reshape(structures(nall)%xyz - structures(i)%xyz, [nat3])
+            Y(:, i) = reshape(structures(nall)%gradient - structures(i)%gradient, [nat3])
+         end do
+         do i = 1, nall - 1
+            norm_1 = norm2(S(:, i))
+            norm_2 = norm2(Y(:, i))
+            write (*, *) norm_2/norm_1
+            if (norm_2/norm_1 > cos_thresh) list(i) = .true.
+         end do
+         list(nall) = .true.
          ! nstruc = 0
          ! if (nint(cos_thresh*n) > 0) nstruc = max(nint(cos_thresh*n), 5)
          ! write (*, *) nstruc
          ! nstruc = min(nall, nstruc)
          ! write (*, *) "NSTRUC:", nstruc
          ! if (nstruc > 0) then
-         !    list(1:nstruc) = .true.
+         !    list(nall-nstruc+1:nall) = .true.
          !    list(nall) = .true.
          ! else
          !    list(:) = .false.

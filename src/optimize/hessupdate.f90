@@ -856,7 +856,7 @@ contains  !> MODULE PROCEDURES START HERE
       !-----------------------------------------
       MtM = matmul(transpose(M), M)
 
-      lambda = 3.16d-4
+      lambda = 1d-7
 
       do i = 1, q
          MtM(i, i) = MtM(i, i) + lambda
