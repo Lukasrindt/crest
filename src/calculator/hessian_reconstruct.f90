@@ -83,13 +83,16 @@ contains
       self%coords(idx, :, :) = coords
    end subroutine update_cashed_hessian
 
-   subroutine construct_hessian(self)
+   subroutine construct_hessian(self, S_in, Y_in, list, nstruc)
       class(cashed_hessian), intent(inout) :: self
+      real(wp), intent(in), optional :: S_in(:, :), Y_in(:, :)
+      logical, intent(in), optional :: list(:)
+      integer, intent(in), optional :: nstruc
       integer :: i, j, k, nat3
       real(wp), allocatable :: tmp(:), tmp_coords(:, :), tmp_grads(:, :), dx(:)
       real(wp), allocatable :: S(:, :), Y(:, :)
       real(wp) :: gnorm
-      integer :: unit, iter, made_iters
+      integer :: unit, iter, made_iters, count
 
       nat3 = 3*self%natm
       if (self%hu_type < 5) then !Single secant updates!
@@ -138,16 +141,32 @@ contains
 
          call dhtosq(nat3, self%H(:, :), self%hess(:))
       else !Multisecnt updates
+
+         if (present(S_in) .and. present(Y_in) .and. present(list) .and. present(nstruc)) then
+            allocate (S(nat3, nstruc), Y(nat3, nstruc))
+            count = 0
+            do i = 1, size(S_in, 2)
+            if (list(i)) then
+               count = count + 1
+               S(:, count) = S_in(:, i)
+               Y(:, count) = Y_in(:, i)
+               write (*, *) i, count, "S has NaN =", any(ieee_is_nan(S(:,count)))
+            write (*, *) i, count, "S has Inf =", any(.not. ieee_is_finite(S(:,count)))
+            end if
+            end do
+            write (*, *) "S has NaN =", any(ieee_is_nan(S))
+            write (*, *) "S has Inf =", any(.not. ieee_is_finite(S))
+         else
          call dhtosq(nat3, self%H(:, :), self%hess(:))
+            allocate (S(nat3, self%steps - 1)) !CAUTION, steps needs to be initialized properly.
+            allocate (self%S(nat3, self%steps - 1), self%Y(nat3, self%steps - 1))
+            allocate (Y(nat3, self%steps - 1)) ! SHould be refactored to come from length of coord vector?
 
-         allocate (S(nat3, self%steps - 1)) !CAUTION, steps needs to be initialized properly.
-         allocate (self%S(nat3, self%steps - 1), self%Y(nat3, self%steps - 1))
-         allocate (Y(nat3, self%steps - 1)) ! SHould be refactored to come from length of coord vector?
-
-         do i = 1, self%steps-1
-            S(:, i) = reshape(self%coords(self%steps, :, :) - self%coords(i, :, :), [nat3])
-            Y(:, i) = reshape(self%gradient(self%steps, :, :) - self%gradient(i, :, :), [nat3])
-         end do
+            do i = 1, self%steps - 1
+               S(:, i) = reshape(self%coords(self%steps, :, :) - self%coords(i, :, :), [nat3])
+               Y(:, i) = reshape(self%gradient(self%steps, :, :) - self%gradient(i, :, :), [nat3])
+            end do
+         end if
          ! do i = 2, self%steps
          !    S(:, i-1) = reshape(self%coords(i, :, :) - self%coords(i-1, :, :), [nat3])
          !    Y(:, i-1) = reshape(self%gradient(i, :, :) - self%gradient(i-1, :, :), [nat3])
@@ -155,14 +174,12 @@ contains
          self%S = S
          self%Y = Y
          ! write (*, *) self%Y
-         if (self%hu_type == 5) call ms_bfgs_update(nat3, self%steps - 1, self%H, S, Y) !For this, init need to be placed in self%H
-         if (self%hu_type == 6) call ms_psb_update(nat3, self%steps - 1, self%H, S, Y)
-         if (self%hu_type == 7) call ms_bfgs_polar_regularized(nat3, self%steps - 1, self%H, S, Y)
-         if (self%hu_type == 8) call ms_rsr_inverse_update(nat3, self%steps - 1, self%H, S, Y)
-         if (self%hu_type == 9) call ms_rsr_polar_update(nat3, self%steps - 1, self%H, S, Y)
-
+         if (self%hu_type == 5) call ms_bfgs_update(nat3, nstruc, self%H, S, Y) !For this, init need to be placed in self%H
+         if (self%hu_type == 6) call ms_psb_update(nat3, nstruc , self%H, S, Y)
+         if (self%hu_type == 7) call ms_bfgs_polar_regularized(nat3, nstruc, self%H, S, Y)
+         if (self%hu_type == 8) call ms_rsr_inverse_update(nat3, nstruc , self%H, S, Y)
+         if (self%hu_type == 9) call ms_rsr_polar_update(nat3, nstruc, self%H, S, Y)
       end if
-
    end subroutine construct_hessian
 
    subroutine update_hessian(nat3, gnorm, grd1, gold, dx, hess, hu_type)

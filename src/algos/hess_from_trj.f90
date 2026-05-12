@@ -27,6 +27,7 @@ subroutine hess_from_trj(env, tim)
    use thermochem_module
    use hessian_quality
    use optimize_maths
+   use, intrinsic :: ieee_arithmetic
    implicit none
    type(systemdata), intent(inout) :: env
    type(timer), intent(inout)      :: tim
@@ -51,6 +52,7 @@ subroutine hess_from_trj(env, tim)
    real(wp) :: etot
    logical, allocatable :: list(:)
    real(wp), allocatable :: hess(:, :), freqs(:), quality(:), final_hess(:, :), init_hess(:, :), init_eigenvalues(:)
+   real(wp), allocatable :: S(:,:), Y(:,:)
 
 !========================================================================================!
    call tim%start(14, 'Test implementation')
@@ -78,33 +80,36 @@ subroutine hess_from_trj(env, tim)
 
    ! nstruc = ceiling(real(nall)/real(env%calc%chess_space))
    ! write (*, *) "Number of Strucs:", nstruc
-   allocate (list(nall))
-   call generate_chess_list(env%calc, nall, list, nstruc, structures, env%calc%cos_thresh)
-  call env%calc%chess%alloc(structures(1)%nat,nstruc,env%calc%initialize_hr_type,env%calc%hr_hu_type,hguess=env%calc%chess_id_guess)
+   allocate (list(nall-1))
+   init_mol = structures(1)
+  call env%calc%chess%alloc(structures(1)%nat,7,env%calc%initialize_hr_type,env%calc%hr_hu_type,hguess=env%calc%chess_id_guess)
+   call initialize_hessian(env%calc, env%calc%chess%initialize_type, structures(1)%xyz, &
+     & init_mol%nat, init_mol%at, env%calc%chess%hess(:), env%calc%chess%hguess, pr)
+   call dhtosq(nat3, env%calc%chess%H, env%calc%chess%hess(:))
+   call generate_chess_list(env%calc, nall, list, nstruc, structures, env%calc%cos_thresh,S,Y, env%calc%chess%H)
+            write (*, *) "S has NaN =", any(ieee_is_nan(S))
+            write (*, *) "S has Inf =", any(.not. ieee_is_finite(S))
 
    ! do i = 1, nall - 1, env%calc%chess_space
    !    call env%calc%chess%update(structures(i)%gradient, structures(i)%xyz)
    ! end do
 
-   do i = 1, nall
-      if (list(i)) then
-         call env%calc%chess%update(structures(i)%gradient, structures(i)%xyz)
-      end if
-   end do
+   ! do i = 1, nall
+   !    if (list(i)) then
+   !       call env%calc%chess%update(structures(i)%gradient, structures(i)%xyz)
+   !    end if
+   ! end do
 
    ! if (nstruc > 1) then
-      idx = maxloc(env%calc%chess%order, 1)
+      ! idx = minloc(env%calc%chess%order, 1)
       ! if (minval(env%calc%chess%order) .eq. 0) idx = 1
    ! else
    !    idx = nall
    ! end if
    write(*,*) nstruc, idx
 
-   init_mol = structures(nall)
-   call initialize_hessian(env%calc, env%calc%chess%initialize_type, env%calc%chess%coords(idx, :, :), &
-     & init_mol%nat, init_mol%at, env%calc%chess%hess(:), env%calc%chess%hguess, pr)
    allocate (init_hess(nat3, nat3))
-   if (nstruc > 1) call env%calc%chess%construct_hessian()
+   if (nstruc > 1) call env%calc%chess%construct_hessian(S,Y,list,nstruc)
    if (nstruc == 1) call dhtosq(nat3, env%calc%chess%H,env%calc%chess%hess)
    ! call dhtosq(nat3,init_hess,env%calc%chess%hess)
 

@@ -21,6 +21,7 @@
 !================================================================================!
 module hessupdate_module
    use iso_fortran_env, only: wp => real64
+   use, intrinsic :: ieee_arithmetic
 
    public :: bfgs
    public :: powell
@@ -566,10 +567,10 @@ contains  !> MODULE PROCEDURES START HERE
       ! Y^T S
       !-----------------------------------------
       YtS = matmul(transpose(Y), S)
-        lambda = 1d-7
-      do i=1,q
-        YtS(i,i) = YtS(i,i) + lambda
-      enddo 
+      lambda = 1d-7
+      do i = 1, q
+         YtS(i, i) = YtS(i, i) + lambda
+      end do
 
       !-----------------------------------------
       ! Solve (Y^T S) X = Y^T
@@ -589,10 +590,9 @@ contains  !> MODULE PROCEDURES START HERE
       ! S^T B S
       !-----------------------------------------
       StBS = matmul(transpose(S), BS)
-      do i=1,q
-        StBS(i,i) = StBS(i,i) + lambda
-      enddo 
-
+      do i = 1, q
+         StBS(i, i) = StBS(i, i) + lambda
+      end do
 
       !-----------------------------------------
       ! Solve (S^T B S) X = (B S)^T
@@ -668,7 +668,7 @@ contains  !> MODULE PROCEDURES START HERE
       ! Build H^{-1} = (AtA)^(-1/2)
       do i = 1, q
          ! if (eigval(i) > tau) then
-            eigval(i) = 1d0/sqrt(eigval(i))
+         eigval(i) = 1d0/sqrt(eigval(i))
          ! else
          !    eigval(i) = 0d0
          ! end if
@@ -720,7 +720,7 @@ contains  !> MODULE PROCEDURES START HERE
 
       do i = 1, q
          ! if (eigval(i) > tau) then
-            eigval(i) = 1d0/sqrt(eigval(i))
+         eigval(i) = 1d0/sqrt(eigval(i))
          ! else
          !    eigval(i) = 0d0
          ! end if
@@ -789,11 +789,11 @@ contains  !> MODULE PROCEDURES START HERE
       ! S^T S
       !-----------------------------------------
       StS = matmul(transpose(S), S)
-  
+
       lambda = 1d-7
-      do k=1,q
-        StS(k,k) = StS(k,k) + lambda
-      enddo 
+      do k = 1, q
+         StS(k, k) = StS(k, k) + lambda
+      end do
       !-----------------------------------------
       ! Solve (S^T S) X = R^T
       !-----------------------------------------
@@ -877,13 +877,15 @@ contains  !> MODULE PROCEDURES START HERE
       call dsyev('V', 'U', q, eigvec, q, eigval, work, lwork, info)
       deallocate (work)
 
+      write (*, *) info
+
       if (info /= 0) stop "DSYEV failed (polar)"
 
       !-----------------------------------------
       ! Step 5: build H^{-1} = (MtM)^(-1/2)
       !-----------------------------------------
       do i = 1, q
-            eigval(i) = 1d0/sqrt(eigval(i))
+         eigval(i) = 1d0/sqrt(eigval(i))
       end do
 
       Hinv = 0d0
@@ -904,7 +906,7 @@ contains  !> MODULE PROCEDURES START HERE
 
    end subroutine
 
-      subroutine ms_rsr_inverse_update(n, q, B, S, Y)
+   subroutine ms_rsr_inverse_update(n, q, B, S, Y)
 
       implicit none
       integer, intent(in) :: n, q
@@ -944,9 +946,9 @@ contains  !> MODULE PROCEDURES START HERE
 
       lambda = 1d-7
 
-      do i=1,q
-        M(i,i) = M(i,i) + lambda
-      enddo 
+      do i = 1, q
+         M(i, i) = M(i, i) + lambda
+      end do
 
       !-----------------------------------------
       ! Step 4: eigen-decomposition of M

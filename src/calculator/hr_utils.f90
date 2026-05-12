@@ -7,6 +7,7 @@ module hr_utils
    use axis_module
    use strucrd
    use irmsd_module
+   use, intrinsic :: ieee_arithmetic
    implicit none
    private
 
@@ -155,62 +156,62 @@ contains
    end subroutine force_psd_svd
 
    subroutine force_psd_eig(hess, nat3)
-   implicit none
-   integer, intent(in) :: nat3
-   real(wp), intent(inout) :: hess(nat3, nat3)
+      implicit none
+      integer, intent(in) :: nat3
+      real(wp), intent(inout) :: hess(nat3, nat3)
 
-   real(wp), allocatable :: eigvec(:, :), eigval(:)
-   real(wp), allocatable :: work(:)
-   integer :: lwork, info
-   integer :: i, j, l
+      real(wp), allocatable :: eigvec(:, :), eigval(:)
+      real(wp), allocatable :: work(:)
+      integer :: lwork, info
+      integer :: i, j, l
 
-   ! --- allocate ---
-   allocate(eigvec(nat3, nat3), eigval(nat3))
+      ! --- allocate ---
+      allocate (eigvec(nat3, nat3), eigval(nat3))
 
-   ! --- 1. symmetrize ---
-   hess = 0.5_wp * (hess + transpose(hess))
+      ! --- 1. symmetrize ---
+      hess = 0.5_wp*(hess + transpose(hess))
 
-   ! copy because dsyev overwrites input
-   eigvec = hess
+      ! copy because dsyev overwrites input
+      eigvec = hess
 
-   ! --- workspace query ---
-   lwork = -1
-   allocate(work(1))
-   call dsyev('V', 'U', nat3, eigvec, nat3, eigval, work, lwork, info)
-   lwork = int(work(1))
-   deallocate(work)
-   allocate(work(lwork))
+      ! --- workspace query ---
+      lwork = -1
+      allocate (work(1))
+      call dsyev('V', 'U', nat3, eigvec, nat3, eigval, work, lwork, info)
+      lwork = int(work(1))
+      deallocate (work)
+      allocate (work(lwork))
 
-   ! --- 2. diagonalize ---
-   call dsyev('V', 'U', nat3, eigvec, nat3, eigval, work, lwork, info)
+      ! --- 2. diagonalize ---
+      call dsyev('V', 'U', nat3, eigvec, nat3, eigval, work, lwork, info)
 
-   if (info /= 0) then
-      write(*,*) "dsyev failed, info=", info
-      stop
-   end if
+      if (info /= 0) then
+         write (*, *) "dsyev failed, info=", info
+         stop
+      end if
 
-   ! --- 3. flip negative eigenvalues ---
-   ! do i = 1, nat3
-   !    if (eigval(i) < 0.0_wp) eigval(i) = -eigval(i)
-   ! end do
+      ! --- 3. flip negative eigenvalues ---
+      ! do i = 1, nat3
+      !    if (eigval(i) < 0.0_wp) eigval(i) = -eigval(i)
+      ! end do
 
-   do i = 1, nat3
-      if (eigval(i) < 0.0_wp) eigval(i) = 0
-   end do
-   ! --- 4. reconstruct H = Q Λ Q^T ---
-   hess = 0.0_wp
-
-   do l = 1, nat3
       do i = 1, nat3
-         do j = 1, nat3
-            hess(i,j) = hess(i,j) + eigval(l) * eigvec(i,l) * eigvec(j,l)
+         if (eigval(i) < 0.0_wp) eigval(i) = 0
+      end do
+      ! --- 4. reconstruct H = Q Λ Q^T ---
+      hess = 0.0_wp
+
+      do l = 1, nat3
+         do i = 1, nat3
+            do j = 1, nat3
+               hess(i, j) = hess(i, j) + eigval(l)*eigvec(i, l)*eigvec(j, l)
+            end do
          end do
       end do
-   end do
 
-   deallocate(eigvec, eigval, work)
+      deallocate (eigvec, eigval, work)
 
-end subroutine force_psd_eig
+   end subroutine force_psd_eig
 
    subroutine force_positive_definiteness(hess, nat3)
       real(wp), intent(inout) :: hess(:)
@@ -254,27 +255,28 @@ end subroutine force_psd_eig
 
    end subroutine force_positive_definiteness
 
-   subroutine generate_chess_list(calc, nall, list, nstruc, structures, cos_thresh)
+   subroutine generate_chess_list(calc, nall, list, nstruc, structures, cos_thresh, S, Y, H_init)
       type(calcdata), intent(in) :: calc
       integer, intent(in) :: nall
       real(wp), intent(in) :: cos_thresh
       integer, intent(inout) :: nstruc
       logical, intent(inout):: list(:)
+      real(wp), intent(in) :: H_init(:, :)
       type(coord), intent(in) :: structures(:)
       integer :: i, last, nat3, k, j, case
-      real(wp), allocatable :: prob(:), r(:)
       real(wp) :: rmsdval
       integer :: n, m
 
-      real(wp), allocatable :: S(:, :), Y(:, :)
-      real(wp) :: norm_s(nall - 1), sy(nall - 1), ci(nall - 1)
+      real(wp), intent(inout), allocatable :: S(:, :), Y(:, :)
+      real(wp), allocatable :: R(:, :)
+      real(wp) :: norm_s(nall - 1), sy(nall - 1), ci(nall - 1), norm_r(nall - 1)
 
-      real(wp) :: cos_ij, max_cos
+      real(wp) :: cos_ij, max_cos, max_r
       real(wp) :: c_best, norm_1, norm_2
 
       real(wp), parameter :: eps = 1d-14
 
-      case = 1
+      case = 2
 
       nat3 = structures(1)%nat*3
       n = nat3
@@ -291,10 +293,10 @@ end subroutine force_psd_eig
       ! STEP 1: build secants
       !-------------------------------------------------------
       if (case == 1) then
-         allocate (S(nat3, nall - 1), Y(nat3, nall - 1))
+         allocate (S(nat3, nall - 1), Y(nat3, nall - 1), R(nat3, nall - 1))
          do i = 1, nall - 1
-            S(:, i) = reshape(structures(nall)%xyz - structures(i)%xyz, [nat3])
-            Y(:, i) = reshape(structures(nall)%gradient - structures(i)%gradient, [nat3])
+            S(:, i) = reshape(structures(i + 1)%xyz - structures(i)%xyz, [nat3])
+            Y(:, i) = reshape(structures(i + 1)%gradient - structures(i)%gradient, [nat3])
          end do
 
          m = nall
@@ -368,13 +370,53 @@ end subroutine force_psd_eig
             S(:, i) = reshape(structures(nall)%xyz - structures(i)%xyz, [nat3])
             Y(:, i) = reshape(structures(nall)%gradient - structures(i)%gradient, [nat3])
          end do
-         do i = 1, nall - 1
-            norm_1 = norm2(S(:, i))
-            norm_2 = norm2(Y(:, i))
-            write (*, *) norm_2/norm_1
-            if (norm_2/norm_1 > cos_thresh) list(i) = .true.
+
+         R = Y - matmul(H_init, S)
+         m = nall
+
+         list(:) = .true.
+         do k = 1, m - 1
+
+            if (.not. list(k)) cycle
+
+            max_cos = 0d0
+
+            do i = 1, k - 1
+               if (.not. list(i)) cycle
+
+               cos_ij = dot_product(R(:, i), R(:, k))/ &
+                        (sqrt(dot_product(R(:, i), R(:, i)))* &
+                         sqrt(dot_product(R(:, k), R(:, k))) + eps)
+
+               if (abs(cos_ij) > max_cos) max_cos = abs(cos_ij)
+            end do
+
+            ! reject nearly collinear directions
+            if (max_cos > cos_thresh) then
+               list(k) = .false.
+               cycle
+            end if
+
          end do
-         list(nall) = .true.
+
+         ! max_r = 0
+
+         ! do i = 1, nall - 1
+         !    norm_r(i) = norm2(R(:, i))
+         !    write(*,*) norm_r(i)
+         !    if (norm_r(i) > max_r) max_r = norm_r(i)
+         ! end do
+
+         ! do i = 1, nall - 1
+         !    if (norm_r(i) > cos_thresh*max_r) list(i) = .true.
+         ! end do
+         ! do i = 1, nall - 1
+         !    norm_1 = norm2(S(:, i))
+         !    norm_2 = norm2(Y(:, i))
+         !    write (*, *) norm_2/norm_1
+         !    if (norm_2/norm_1 > cos_thresh) list(i) = .true.
+         ! end do
+         ! list(nall) = .true.
          ! nstruc = 0
          ! if (nint(cos_thresh*n) > 0) nstruc = max(nint(cos_thresh*n), 5)
          ! write (*, *) nstruc
@@ -390,6 +432,7 @@ end subroutine force_psd_eig
       end if
 
       nstruc = count(list)
+      write(*,*) "nstruc", nstruc
       write (*, *) "Accepted Structures List:", list
    end subroutine generate_chess_list
 
