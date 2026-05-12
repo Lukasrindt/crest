@@ -281,7 +281,7 @@ contains
       nat3 = structures(1)%nat*3
       n = nat3
       list(:) = .false.
-      list(nall) = .true.
+      ! list(nall) = .true.
       ! list(1:10) = .true.
       ! list(nall) = .true.
       ! list(nall-15:nall) = .true.
