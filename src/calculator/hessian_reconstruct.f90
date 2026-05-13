@@ -150,12 +150,8 @@ contains
                count = count + 1
                S(:, count) = S_in(:, i)
                Y(:, count) = Y_in(:, i)
-               write (*, *) i, count, "S has NaN =", any(ieee_is_nan(S(:,count)))
-            write (*, *) i, count, "S has Inf =", any(.not. ieee_is_finite(S(:,count)))
             end if
             end do
-            write (*, *) "S has NaN =", any(ieee_is_nan(S))
-            write (*, *) "S has Inf =", any(.not. ieee_is_finite(S))
          else
          call dhtosq(nat3, self%H(:, :), self%hess(:))
             allocate (S(nat3, self%steps - 1)) !CAUTION, steps needs to be initialized properly.

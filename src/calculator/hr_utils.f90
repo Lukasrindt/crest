@@ -264,8 +264,8 @@ contains
       real(wp), intent(in) :: H_init(:, :)
       type(coord), intent(in) :: structures(:)
       integer :: i, last, nat3, k, j, case
-      real(wp) :: rmsdval
-      integer :: n, m
+      real(wp) :: best_cos, cos_ik
+      integer :: n, m, best_k
 
       real(wp), intent(inout), allocatable :: S(:, :), Y(:, :)
       real(wp), allocatable :: R(:, :)
@@ -281,14 +281,6 @@ contains
       nat3 = structures(1)%nat*3
       n = nat3
       list(:) = .false.
-      ! list(nall) = .true.
-      ! list(1:10) = .true.
-      ! list(nall) = .true.
-      ! list(nall-15:nall) = .true.
-      ! write(*,*) list
-      !
-      !
-      !
       !-------------------------------------------------------
       ! STEP 1: build secants
       !-------------------------------------------------------
@@ -374,42 +366,112 @@ contains
          R = Y - matmul(H_init, S)
          m = nall
 
-         list(:) = .true.
-         do k = 1, m - 1
+         list(:) = .false.
+         list(1) = .true.
 
-            if (.not. list(k)) cycle
+         do while (.true.)
 
-            max_cos = 0d0
+            best_cos = 1d0
+            best_k = -1
 
-            do i = 1, k - 1
-               if (.not. list(i)) cycle
+            !---------------------------------------------------------
+            ! find candidate with smallest max cosine to accepted set
+            !---------------------------------------------------------
+            do k = 1, m-1
 
-               cos_ij = dot_product(R(:, i), R(:, k))/ &
-                        (sqrt(dot_product(R(:, i), R(:, i)))* &
-                         sqrt(dot_product(R(:, k), R(:, k))) + eps)
+               if (list(k)) cycle   ! already accepted
 
-               if (abs(cos_ij) > max_cos) max_cos = abs(cos_ij)
+               max_cos = 0d0
+
+               do i = 1, m-1
+                  if (.not. list(i)) cycle  ! only compare to accepted set
+
+                  cos_ik = dot_product(R(:, i), R(:, k))/ &
+                           (sqrt(dot_product(R(:, i), R(:, i)))* &
+                            sqrt(dot_product(R(:, k), R(:, k))) + eps)
+
+                  max_cos = max(max_cos, abs(cos_ik))
+               end do
+
+               ! track best candidate (smallest worst-case similarity)
+               if (max_cos < best_cos) then
+                  best_cos = max_cos
+                  best_k = k
+               end if
+
             end do
 
-            ! reject nearly collinear directions
-            if (max_cos > cos_thresh) then
-               list(k) = .false.
-               cycle
-            end if
+            nstruc = count(list)
+            write(*,*) nstruc
+            write(*,*) nstruc/(3*real(structures(1)%nat, wp)) 
+
+            !---------------------------------------------------------
+            ! stopping condition: no acceptable secant remains
+            !---------------------------------------------------------
+            if (best_k == -1) exit
+            if (best_cos > 0.97 .and. nstruc/(3*real(structures(1)%nat,wp)) > cos_thresh) exit
+            ! if (nstruc/(3*real(structures(1)%nat, wp)) > cos_thresh) exit
+
+            !---------------------------------------------------------
+            ! accept best candidate
+            !---------------------------------------------------------
+            list(best_k) = .true.
 
          end do
 
+         ! c_best = 0d0
+         !
+         ! do k = 1, m - 1
+         !
+         !    norm_s(k) = sqrt(dot_product(S(:, k), S(:, k)))
+         !    sy(k) = dot_product(S(:, k), Y(:, k))
+         !
+         !    if (sy(k) <= 1d-10) then
+         !       list(k) = .false.
+         !       cycle
+         !    end if
+         !
+         !    list(k) = .true.
+         !
+         ! end do
+         ! write (*, *) "List after first filter:", list
+
+         ! do i = 1, nall - 1
+         !     norm_r(i) = norm2(R(:, i))
+         !     write(*,*) norm_r(i)
+         !     if (norm_r(i) > max_r) max_r = norm_r(i)
+         !  end do
+         !
+         !  do i = 1, nall - 1
+         !     if (norm_r(i) < cos_thresh*max_r) list(i) = .false.
+         !  end do
+
+         ! do k = 1, m - 1
+         !
+         !    if (.not. list(k)) cycle
+         !
+         !    max_cos = 0d0
+         !
+         !    do i = 1, k - 1
+         !       if (.not. list(i)) cycle
+         !
+         !       cos_ij = dot_product(R(:, i), R(:, k))/ &
+         !                (sqrt(dot_product(R(:, i), R(:, i)))* &
+         !                 sqrt(dot_product(R(:, k), R(:, k))) + eps)
+         !
+         !       if (abs(cos_ij) > max_cos) max_cos = abs(cos_ij)
+         !    end do
+         !
+         !    ! reject nearly collinear directions
+         !    if (max_cos > cos_thresh) then
+         !       list(k) = .false.
+         !       cycle
+         !    end if
+         !
+         ! end do
+         !
          ! max_r = 0
 
-         ! do i = 1, nall - 1
-         !    norm_r(i) = norm2(R(:, i))
-         !    write(*,*) norm_r(i)
-         !    if (norm_r(i) > max_r) max_r = norm_r(i)
-         ! end do
-
-         ! do i = 1, nall - 1
-         !    if (norm_r(i) > cos_thresh*max_r) list(i) = .true.
-         ! end do
          ! do i = 1, nall - 1
          !    norm_1 = norm2(S(:, i))
          !    norm_2 = norm2(Y(:, i))
@@ -432,7 +494,8 @@ contains
       end if
 
       nstruc = count(list)
-      write(*,*) "nstruc", nstruc
+      write(*,*) "nat", structures(1)%nat
+      write (*, *) "nstruc", nstruc
       write (*, *) "Accepted Structures List:", list
    end subroutine generate_chess_list
 
