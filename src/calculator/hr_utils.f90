@@ -100,9 +100,10 @@ contains
          mhset%model = calc%mh_type
          call modhes(calc, mhset, nat, xyz, at, hess(:), pr)
          !$omp end critical
+         call dhtosq(nat3, hess_full, hess)
       end select
 
-      ! call force_psd_svd(hess_full, nat3)
+      call force_psd_svd(hess_full, nat3)
       hess_full = 0.5*(hess_full + transpose(hess_full))
       call dsqtoh(nat3, hess_full(:, :), hess(:))
       ! call force_positive_definiteness(hess, nat3)
