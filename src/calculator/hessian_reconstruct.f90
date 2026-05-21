@@ -152,6 +152,7 @@ contains
                Y(:, count) = Y_in(:, i)
             end if
             end do
+            write(*,*) count
          else
          call dhtosq(nat3, self%H(:, :), self%hess(:))
             allocate (S(nat3, self%steps - 1)) !CAUTION, steps needs to be initialized properly.
@@ -167,8 +168,8 @@ contains
          !    S(:, i-1) = reshape(self%coords(i, :, :) - self%coords(i-1, :, :), [nat3])
          !    Y(:, i-1) = reshape(self%gradient(i, :, :) - self%gradient(i-1, :, :), [nat3])
          ! end do
-         self%S = S
-         self%Y = Y
+         ! self%S = S
+         ! self%Y = Y
          ! write (*, *) self%Y
          if (self%hu_type == 5) call ms_bfgs_update(nat3, nstruc, self%H, S, Y) !For this, init need to be placed in self%H
          if (self%hu_type == 6) call ms_psb_update(nat3, nstruc , self%H, S, Y)

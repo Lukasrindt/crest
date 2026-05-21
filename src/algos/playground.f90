@@ -106,6 +106,26 @@ subroutine crest_playground(env, tim)
       logical, allocatable :: acc_list(:)
 
       call rdensemble(env%inputcoords, nall, structures)
+      allocate (env%calc%chess)
+   nat3 = 3*structures(1)%nat
+
+   ! allocate (list(nall-1))
+   init_mol = structures(nall)
+
+  call env%calc%chess%alloc(structures(1)%nat,7,env%calc%initialize_hr_type,env%calc%hr_hu_type,hguess=env%calc%chess_id_guess)
+   call initialize_hessian(env%calc, env%calc%chess%initialize_type, structures(nall)%xyz, &
+     & init_mol%nat, init_mol%at, env%calc%chess%hess(:), env%calc%chess%hguess, pr)
+  call dhtosq(nat3, env%calc%chess%H, env%calc%chess%hess(:))
+
+  do i=1,nat3
+    env%calc%chess%H(i,i) = env%calc%chess%H(i,i) - 1d-9
+  enddo
+
+   pr = .true.
+   etot = structures(nall)%energy
+   call calc_thermo_from_hess(structures(nall), env%calc%chess%H, pr, &
+   & env%calc%nt, env%calc%temperatures, env%calc%ithr, env%calc%fscal, env%calc%sthr, env%calc%et, &
+   & env%calc%ht, env%calc%gt, env%calc%stot, etot, env%calc%emodel)
    end block
 
 end subroutine crest_playground

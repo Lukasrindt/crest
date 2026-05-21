@@ -78,8 +78,6 @@ subroutine hess_from_trj(env, tim)
    allocate (env%calc%chess)
    nat3 = 3*structures(1)%nat
 
-   ! nstruc = ceiling(real(nall)/real(env%calc%chess_space))
-   ! write (*, *) "Number of Strucs:", nstruc
    allocate (list(nall-1))
    init_mol = structures(1)
   call env%calc%chess%alloc(structures(1)%nat,7,env%calc%initialize_hr_type,env%calc%hr_hu_type,hguess=env%calc%chess_id_guess)
@@ -87,25 +85,7 @@ subroutine hess_from_trj(env, tim)
      & init_mol%nat, init_mol%at, env%calc%chess%hess(:), env%calc%chess%hguess, pr)
    call dhtosq(nat3, env%calc%chess%H, env%calc%chess%hess(:))
    call generate_chess_list(env%calc, nall, list, nstruc, structures, env%calc%cos_thresh,S,Y, env%calc%chess%H)
-            write (*, *) "S has NaN =", any(ieee_is_nan(S))
-            write (*, *) "S has Inf =", any(.not. ieee_is_finite(S))
 
-   ! do i = 1, nall - 1, env%calc%chess_space
-   !    call env%calc%chess%update(structures(i)%gradient, structures(i)%xyz)
-   ! end do
-
-   ! do i = 1, nall
-   !    if (list(i)) then
-   !       call env%calc%chess%update(structures(i)%gradient, structures(i)%xyz)
-   !    end if
-   ! end do
-
-   ! if (nstruc > 1) then
-      ! idx = minloc(env%calc%chess%order, 1)
-      ! if (minval(env%calc%chess%order) .eq. 0) idx = 1
-   ! else
-   !    idx = nall
-   ! end if
    write(*,*) nstruc, idx
 
    allocate (init_hess(nat3, nat3))

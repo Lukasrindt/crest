@@ -102,7 +102,7 @@ contains
          !$omp end critical
       end select
 
-      ! call force_psd_eig(hess_full, nat3)
+      ! call force_psd_svd(hess_full, nat3)
       hess_full = 0.5*(hess_full + transpose(hess_full))
       call dsqtoh(nat3, hess_full(:, :), hess(:))
       ! call force_positive_definiteness(hess, nat3)
@@ -265,7 +265,7 @@ contains
       type(coord), intent(in) :: structures(:)
       integer :: i, last, nat3, k, j, case
       real(wp) :: best_cos, cos_ik
-      integer :: n, m, best_k
+      integer :: n, m, best_k, npairs
 
       real(wp), intent(inout), allocatable :: S(:, :), Y(:, :)
       real(wp), allocatable :: R(:, :)
@@ -357,11 +357,27 @@ contains
 
          end do
       else
-         allocate (S(nat3, nall - 1), Y(nat3, nall - 1))
+         allocate (S(nat3, nall - 1), Y(nat3, nall - 1), R(nat3,nall-1))
          do i = 1, nall - 1
-            S(:, i) = reshape(structures(nall)%xyz - structures(i)%xyz, [nat3])
-            Y(:, i) = reshape(structures(nall)%gradient - structures(i)%gradient, [nat3])
+            S(:, i) = reshape(structures(i+1)%xyz - structures(i)%xyz, [nat3])
+            Y(:, i) = reshape(structures(i+1)%gradient - structures(i)%gradient, [nat3])
          end do
+         ! npairs = nall*(nall - 1)/2
+         !
+         ! allocate (S(nat3, npairs), Y(nat3, npairs))
+         !
+         ! k = 0
+         ! do i = 1, nall - 1
+         !    do j = i + 1, nall
+         !       k = k + 1
+         !
+         !       S(:, k) = reshape(structures(j)%xyz - structures(i)%xyz, [nat3])
+         !       Y(:, k) = reshape(structures(j)%gradient - structures(i)%gradient, [nat3])
+         !
+         !    end do
+         ! end do
+         !
+         ! allocate(R(nat3,npairs))
 
          R = Y - matmul(H_init, S)
          m = nall
@@ -402,20 +418,26 @@ contains
             end do
 
             nstruc = count(list)
-            write(*,*) nstruc
-            write(*,*) nstruc/(3*real(structures(1)%nat, wp)) 
-
+            write (*, *) nstruc
+            write (*, *) nstruc/(3*real(structures(1)%nat, wp))
+            write (*, *) best_cos
             !---------------------------------------------------------
             ! stopping condition: no acceptable secant remains
             !---------------------------------------------------------
-            if (best_k == -1) exit
-            if (best_cos > 0.97 .and. nstruc/(3*real(structures(1)%nat,wp)) > cos_thresh) exit
+            if (best_k == -1) then
+               write (*, *) "WARNING: GOAL SECANT DENSITY NOT REACHED"
+
+               exit
+            end if
+            if (best_cos > 0.97 .and. nstruc/(3*real(structures(1)%nat,wp)) > 0.09) exit
             ! if (nstruc/(3*real(structures(1)%nat, wp)) > cos_thresh) exit
+            ! if (best_cos > cos_thresh) exit
 
             !---------------------------------------------------------
             ! accept best candidate
             !---------------------------------------------------------
             list(best_k) = .true.
+            write(*,*)"list updated"
 
          end do
 
@@ -494,9 +516,12 @@ contains
       end if
 
       nstruc = count(list)
-      write(*,*) "nat", structures(1)%nat
+      write (*, *) "nat", structures(1)%nat
       write (*, *) "nstruc", nstruc
       write (*, *) "Accepted Structures List:", list
+      ! do i = 1, size(S, 2)
+      !   if (list(i)) write(*,*) "jajaajaj"
+      ! enddo
    end subroutine generate_chess_list
 
    subroutine prj_hess(nat, nat3, xyz, hess, phess_ut)
